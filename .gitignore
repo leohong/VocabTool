@@ -1,0 +1,6 @@
+desktop.ini
+.DS_Store
+Thumbs.db
+.gitconfig
+*.log
+temp_sync/
