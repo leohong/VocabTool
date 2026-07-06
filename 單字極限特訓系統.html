@@ -1,16 +1,19 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>極限單字特訓系統</title>
-  
+
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
-<body class="bg-slate-900 text-slate-100 font-sans p-4 md:p-8 flex justify-center min-h-screen overscroll-none selection:bg-indigo-900 selection:text-indigo-200">
+
+<body
+  class="bg-slate-900 text-slate-100 font-sans p-4 md:p-8 flex justify-center min-h-screen overscroll-none selection:bg-indigo-900 selection:text-indigo-200">
 
   <div id="root" class="w-full max-w-2xl flex flex-col"></div>
 
@@ -42,35 +45,35 @@
         return saved ? JSON.parse(saved) : ['vocab_2000', 'vocab_7000'];
       });
 
-      const defaultState = { 
-        currentDay: 1, 
-        learnedWords: [], 
-        mistakes: {}, 
-        historicalMistakes: {}, 
-        streak: { count: 0, lastDate: null } 
+      const defaultState = {
+        currentDay: 1,
+        learnedWords: [],
+        mistakes: {},
+        historicalMistakes: {},
+        streak: { count: 0, lastDate: null }
       };
 
       const [state, setState] = useState(defaultState);
       const { currentDay, learnedWords = [], mistakes = {}, historicalMistakes = {}, streak = { count: 0, lastDate: null } } = state;
-      
+
       const [vocabList, setVocabList] = useState(rawVocab);
       const [wordsPerDay, setWordsPerDay] = useState(50);
       const [ghostsPerDay, setGhostsPerDay] = useState(10); // 自訂每日幽靈數
-      
-      const [view, setView] = useState('dashboard'); 
+
+      const [view, setView] = useState('dashboard');
       const [showMistakeModal, setShowMistakeModal] = useState(false);
       const [showHistoryModal, setShowHistoryModal] = useState(false);
       const [showPreviewModal, setShowPreviewModal] = useState(false);
-      const [sessionType, setSessionType] = useState('daily'); 
-      
-      const [queue, setQueue] = useState([]);                  
-      const [currentWord, setCurrentWord] = useState(null);    
-      const [currentSessionWords, setCurrentSessionWords] = useState([]); 
-      
-      const [userInput, setUserInput] = useState('');       
-      const [typoCount, setTypoCount] = useState(0);       
-      const [mustTypeCorrectly, setMustTypeCorrectly] = useState(false); 
-      
+      const [sessionType, setSessionType] = useState('daily');
+
+      const [queue, setQueue] = useState([]);
+      const [currentWord, setCurrentWord] = useState(null);
+      const [currentSessionWords, setCurrentSessionWords] = useState([]);
+
+      const [userInput, setUserInput] = useState('');
+      const [typoCount, setTypoCount] = useState(0);
+      const [mustTypeCorrectly, setMustTypeCorrectly] = useState(false);
+
       const inputRef = useRef(null);
 
       // --- 系統同步與續傳 ---
@@ -83,10 +86,10 @@
         } else {
           setState(defaultState);
         }
-        
+
         const savedVocab = localStorage.getItem(`vocab_customVocab_${dbName}`);
         setVocabList(savedVocab ? JSON.parse(savedVocab) : rawVocab);
-        
+
         const savedWords = localStorage.getItem(`vocab_wordsPerDay_${dbName}`);
         setWordsPerDay(savedWords ? parseInt(savedWords, 10) : 50);
 
@@ -151,11 +154,11 @@
       // ----------------------------------------
       // --- 2. 核心邏輯與演算法 ---
       // ----------------------------------------
-      
+
       const activeMistakesList = Object.values(mistakes).filter(m => m.mistakesCount > 0);
       const mistakesTotal = activeMistakesList.length;
       const historyTotal = Object.keys(historicalMistakes).length;
-      
+
       // 溫度計指示燈
       let indicator = { color: 'text-emerald-400', border: 'border-emerald-500/40', bg: 'bg-emerald-950/30', icon: '🟢', title: '良好' };
       if (mistakesTotal >= 50) indicator = { color: 'text-amber-400', border: 'border-amber-500/40', bg: 'bg-amber-950/30', icon: '🟡', title: '塞車' };
@@ -166,10 +169,10 @@
         const startIndex = (currentDay - 1) * wordsPerDay;
         let baseWords = vocabList.slice(startIndex, startIndex + wordsPerDay);
         if (baseWords.length === 0 && vocabList.length > 0) baseWords = vocabList.slice(-wordsPerDay);
-        
+
         const baseEnSet = new Set(baseWords.map(w => w.en));
         const now = Date.now();
-        
+
         const ghostWords = Object.values(historicalMistakes)
           .filter(h => !h.immune && (now - h.archivedDate) >= (h.interval * 24 * 60 * 60 * 1000))
           .filter(h => !baseEnSet.has(h.data.en)) // 幽靈撞車濾網
@@ -182,10 +185,10 @@
       const startTodaySession = () => {
         const { baseWords, ghostWords } = getDailyWords();
         if (baseWords.length === 0) return alert("字典為空，請先匯入字庫！");
-        
+
         const initializedWords = baseWords.map(w => ({ ...w, _hasCountedMistake: false }));
         const combined = [...initializedWords, ...ghostWords].sort(() => 0.5 - Math.random());
-        
+
         setSessionType('daily');
         setCurrentSessionWords(combined);
         setQueue(combined);
@@ -285,7 +288,7 @@
             if (e.key === 'ArrowRight') handleScan(true); // 右方向鍵=認識
           }
         };
-        const handleTouchStart = (e) => { if (view === 'scanning') { touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; }};
+        const handleTouchStart = (e) => { if (view === 'scanning') { touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; } };
         const handleTouchEnd = (e) => {
           if (view !== 'scanning') return;
           const diffX = e.changedTouches[0].clientX - touchStartX;
@@ -311,26 +314,26 @@
 
         if (isCorrect) {
           if (mustTypeCorrectly) {
-            proceedToNext(); 
+            proceedToNext();
             return;
           }
-          
+
           setState(prev => {
             const nextState = { ...prev };
-            
+
             // 雙倍消除法
             if (prev.mistakes[currentWord.en]) {
               const m = prev.mistakes[currentWord.en];
               const newCorrect = (m.correctCount || 0) + 1;
-              const target = Math.min(m.mistakesCount * 2, 6); 
-              
+              const target = Math.min(m.mistakesCount * 2, 6);
+
               if (newCorrect >= target) {
                 const newHistory = { ...prev.historicalMistakes };
-                newHistory[currentWord.en] = { 
-                  mistakesCount: m.mistakesCount, 
-                  totalFails: (newHistory[currentWord.en]?.totalFails || 0) + m.mistakesCount, 
-                  archivedDate: Date.now(), 
-                  step: 0, interval: 7, immune: false, data: currentWord 
+                newHistory[currentWord.en] = {
+                  mistakesCount: m.mistakesCount,
+                  totalFails: (newHistory[currentWord.en]?.totalFails || 0) + m.mistakesCount,
+                  archivedDate: Date.now(),
+                  step: 0, interval: 7, immune: false, data: currentWord
                 };
                 delete nextState.mistakes[currentWord.en];
                 nextState.historicalMistakes = newHistory;
@@ -338,14 +341,14 @@
                 nextState.mistakes = { ...prev.mistakes, [currentWord.en]: { ...m, correctCount: newCorrect } };
               }
             }
-            
+
             // 幽靈突襲升級 (7 -> 21 -> 60 -> 180 -> immune)
             if (currentWord._isGhost) {
               const intervals = [7, 21, 60, 180];
               const h = currentWord._historyData;
               const nextStep = (h.step || 0) + 1;
               const newHistory = { ...nextState.historicalMistakes };
-              
+
               if (nextStep >= 4) {
                 newHistory[currentWord.en] = { ...h, immune: true };
               } else {
@@ -367,7 +370,7 @@
             setMustTypeCorrectly(true);
             setUserInput('');
             if (!currentWord._hasCountedMistake) {
-              currentWord._hasCountedMistake = true; 
+              currentWord._hasCountedMistake = true;
               punishWord(currentWord);
             }
           }
@@ -395,8 +398,8 @@
             });
           }
           setView('summary');
-        } else { 
-          setQueue(newQueue); setCurrentWord(newQueue[0]); 
+        } else {
+          setQueue(newQueue); setCurrentWord(newQueue[0]);
         }
       };
 
@@ -411,7 +414,7 @@
       // ----------------------------------------
       const downloadFile = (filename, content, type) => {
         const element = document.createElement("a");
-        const file = new Blob([content], {type});
+        const file = new Blob([content], { type });
         element.href = URL.createObjectURL(file);
         element.download = filename;
         document.body.appendChild(element);
@@ -423,7 +426,7 @@
         const backup = { dbName, state, vocabList, wordsPerDay, ghostsPerDay, exportDate: new Date().toISOString() };
         downloadFile(`極限備份_${dbName}_${new Date().getTime()}.json`, JSON.stringify(backup, null, 2), 'application/json');
       };
-      
+
       const handleImportJson = (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -432,29 +435,29 @@
           try {
             const data = JSON.parse(event.target.result);
             if (data.dbName && data.state) {
-              
+
               let importedState = { ...defaultState, ...data.state };
-              
+
               // JSON 智慧分流 (判斷是否為舊版 V05 升級)
               const mistakeKeys = Object.keys(importedState.mistakes || {});
               const isV05Upgrade = !data.state.historicalMistakes; // V05 備份檔案沒有歷史殿堂欄位
               if (isV05Upgrade && mistakeKeys.length > 0) {
-                 const toHistory = window.confirm(`💡 系統升級詢問：\n\n偵測到備份檔中包含 ${mistakeKeys.length} 個「當前錯題」。\n\n您是否希望將它們直接轉移至【🏛️ 歷史殿堂】？\n(推薦 V05 升級者使用，能大幅減輕初期雙倍消除的負擔)\n\n▶ 按「確定」：全數轉移至歷史殿堂 (進行間隔突襲)\n▶ 按「取消」：保留在當前錯題集中營`);
-                 
-                 if (toHistory) {
-                   const newHistory = { ...importedState.historicalMistakes };
-                   mistakeKeys.forEach(key => {
-                     const m = importedState.mistakes[key];
-                     if (!newHistory[key]) {
-                       newHistory[key] = {
-                         mistakesCount: m.mistakesCount || 1, totalFails: m.mistakesCount || 1, archivedDate: Date.now(),
-                         step: 0, interval: 7, immune: false, data: m.data
-                       };
-                     }
-                   });
-                   importedState.mistakes = {}; 
-                   importedState.historicalMistakes = newHistory;
-                 }
+                const toHistory = window.confirm(`💡 系統升級詢問：\n\n偵測到備份檔中包含 ${mistakeKeys.length} 個「當前錯題」。\n\n您是否希望將它們直接轉移至【🏛️ 歷史殿堂】？\n(推薦 V05 升級者使用，能大幅減輕初期雙倍消除的負擔)\n\n▶ 按「確定」：全數轉移至歷史殿堂 (進行間隔突襲)\n▶ 按「取消」：保留在當前錯題集中營`);
+
+                if (toHistory) {
+                  const newHistory = { ...importedState.historicalMistakes };
+                  mistakeKeys.forEach(key => {
+                    const m = importedState.mistakes[key];
+                    if (!newHistory[key]) {
+                      newHistory[key] = {
+                        mistakesCount: m.mistakesCount || 1, totalFails: m.mistakesCount || 1, archivedDate: Date.now(),
+                        step: 0, interval: 7, immune: false, data: m.data
+                      };
+                    }
+                  });
+                  importedState.mistakes = {};
+                  importedState.historicalMistakes = newHistory;
+                }
               }
 
               let currentDbList = [...dbList];
@@ -463,7 +466,7 @@
                 setDbList(currentDbList);
                 localStorage.setItem('vocab_dbList', JSON.stringify(currentDbList));
               }
-              
+
               localStorage.setItem('vocab_currentDB', data.dbName);
               localStorage.setItem(`vocab_state_${data.dbName}`, JSON.stringify(importedState));
               localStorage.setItem(`vocab_customVocab_${data.dbName}`, JSON.stringify(data.vocabList || rawVocab));
@@ -477,7 +480,7 @@
               setGhostsPerDay(data.ghostsPerDay || 10);
               alert(`成功覆蓋還原！已切換至資料庫：${data.dbName}`);
             } else alert("JSON 格式不符。");
-          } catch(err) { alert("檔案解析失敗。"); }
+          } catch (err) { alert("檔案解析失敗。"); }
         };
         reader.readAsText(file);
         e.target.value = "";
@@ -490,7 +493,7 @@
       };
 
       const exportMistakesTXT = () => {
-        if(activeMistakesList.length === 0) return alert("錯題庫為空，無需匯出。");
+        if (activeMistakesList.length === 0) return alert("錯題庫為空，無需匯出。");
         let content = `=== 核心錯題本個人紀錄 ===\n\n`;
         activeMistakesList.forEach((m, idx) => { content += `${idx + 1}. 錯誤次數: ${m.mistakesCount}次 | [${m.data.pos}] ${m.data.en} --> ${m.data.zh}\n`; });
         downloadFile(`當前錯題本_${dbName}.txt`, content, 'text/plain');
@@ -505,14 +508,14 @@
           if (isMistakes && text.includes("核心錯題本個人紀錄")) {
             const lines = text.split("\n");
             let count = 0;
-            
+
             // TXT 智慧分流
             const toHistory = window.confirm("💡 系統詢問：\n\n您希望將這批錯題直接放進【🏛️ 歷史殿堂】進行未來的間隔突襲嗎？\n\n▶ 按「確定」：匯入歷史殿堂 (適合已背過的舊錯題)\n▶ 按「取消」：匯入當前錯題庫 (需重新進行雙倍消除)");
 
             setState(prev => {
               const newMistakes = { ...prev.mistakes };
               const newHistory = { ...prev.historicalMistakes };
-              
+
               lines.forEach(line => {
                 const match = line.match(/錯誤(?:次數)?[:\s]*(\d+)次\s*\|\s*\[(.*?)\]\s*(.+?)\s*-->\s*(.*)/);
                 if (match) {
@@ -567,12 +570,12 @@
       };
 
       const resetProgress = () => {
-        if(window.confirm(`確定清除【${dbName}】的所有學習紀錄嗎？(包含歷史殿堂，無法復原)`)) setState(defaultState);
+        if (window.confirm(`確定清除【${dbName}】的所有學習紀錄嗎？(包含歷史殿堂，無法復原)`)) setState(defaultState);
       };
 
       const deleteCurrentDB = () => {
-        if(window.confirm(`警告：確定要徹底刪除【${dbName}】字庫的所有資料與設定嗎？此操作無法復原。`)) {
-          Object.keys(localStorage).forEach(key => { if(key.includes(`_${dbName}`)) localStorage.removeItem(key); });
+        if (window.confirm(`警告：確定要徹底刪除【${dbName}】字庫的所有資料與設定嗎？此操作無法復原。`)) {
+          Object.keys(localStorage).forEach(key => { if (key.includes(`_${dbName}`)) localStorage.removeItem(key); });
           const updatedList = dbList.filter(name => name !== dbName);
           const nextDb = updatedList.length > 0 ? updatedList[0] : 'vocab_2000';
           setDbList(updatedList);
@@ -588,7 +591,7 @@
       // ----------------------------------------
       return (
         <div className="w-full flex flex-col">
-          
+
           <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 bg-slate-800 p-3 sm:p-4 rounded-xl shadow-md border border-slate-700 gap-4">
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-lg font-bold text-indigo-400 flex items-center gap-1.5">
@@ -607,9 +610,9 @@
               )}
             </div>
             <div className="flex items-center gap-2 text-sm text-slate-400 font-medium">
-              進度: 
-              <select value={currentDay} onChange={(e) => setState(prev => ({...prev, currentDay: parseInt(e.target.value, 10)}))} disabled={view !== 'dashboard'} className="bg-slate-900 border border-slate-700 text-indigo-300 rounded-md px-2 py-1 text-xs focus:outline-none focus:border-indigo-500 font-mono">
-                {Array.from({length: Math.max(50, Math.ceil(vocabList.length / wordsPerDay))}, (_, i) => i + 1).map(d => ( <option key={d} value={d}>第 {d} 天</option> ))}
+              進度:
+              <select value={currentDay} onChange={(e) => setState(prev => ({ ...prev, currentDay: parseInt(e.target.value, 10) }))} disabled={view !== 'dashboard'} className="bg-slate-900 border border-slate-700 text-indigo-300 rounded-md px-2 py-1 text-xs focus:outline-none focus:border-indigo-500 font-mono">
+                {Array.from({ length: Math.max(50, Math.ceil(vocabList.length / wordsPerDay)) }, (_, i) => i + 1).map(d => (<option key={d} value={d}>第 {d} 天</option>))}
               </select>
             </div>
           </header>
@@ -617,7 +620,7 @@
           <main className="flex-1 flex flex-col justify-center items-center">
             {view === 'dashboard' && (
               <div className="w-full flex flex-col gap-5 animate-[fadeIn_0.4s_ease-in-out]">
-                
+
                 <button onClick={startTodaySession} className="w-full min-h-[160px] bg-gradient-to-br from-indigo-600 to-indigo-800 hover:from-indigo-500 hover:to-indigo-700 text-white rounded-2xl shadow-xl shadow-indigo-900/30 flex flex-col items-center justify-center gap-3 transition-transform active:scale-[0.98] border border-indigo-500/30 group">
                   <div className="group-hover:scale-110 transition-transform duration-300"><IconPlay /></div>
                   <div className="text-center">
@@ -677,11 +680,11 @@
                   <div className="grid grid-cols-3 gap-2">
                     <div className="flex gap-1">
                       <button onClick={exportDictionaryTXT} className="flex-1 py-1.5 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600 transition-colors" title="匯出字典">⬇️ 字</button>
-                      <label className="flex-1 py-1.5 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600 transition-colors cursor-pointer text-center" title="匯入字典">⬆️ 字<input type="file" accept=".txt" onChange={(e)=>handleImportTXT(e, false)} className="hidden" /></label>
+                      <label className="flex-1 py-1.5 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600 transition-colors cursor-pointer text-center" title="匯入字典">⬆️ 字<input type="file" accept=".txt" onChange={(e) => handleImportTXT(e, false)} className="hidden" /></label>
                     </div>
                     <div className="flex gap-1">
                       <button onClick={exportMistakesTXT} className="flex-1 py-1.5 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600 transition-colors" title="匯出錯題">⬇️ 錯</button>
-                      <label className="flex-1 py-1.5 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600 transition-colors cursor-pointer text-center" title="匯入錯題">⬆️ 錯<input type="file" accept=".txt" onChange={(e)=>handleImportTXT(e, true)} className="hidden" /></label>
+                      <label className="flex-1 py-1.5 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600 transition-colors cursor-pointer text-center" title="匯入錯題">⬆️ 錯<input type="file" accept=".txt" onChange={(e) => handleImportTXT(e, true)} className="hidden" /></label>
                     </div>
                     <div className="flex gap-1">
                       <button onClick={exportJson} className="flex-1 py-1.5 bg-indigo-900/50 rounded text-xs text-indigo-300 hover:bg-indigo-800 transition-colors" title="JSON全匯出">⬇️ J</button>
@@ -741,7 +744,7 @@
                       {typoCount === 1 && !mustTypeCorrectly && <span className="text-xs font-bold text-amber-400 bg-amber-950/40 px-2 py-0.5 rounded border border-amber-900/60 animate-pulse">⚠️ 手滑警告！再錯將強迫重抄</span>}
                       {mustTypeCorrectly && <span className="text-xs font-bold text-red-400 bg-red-950/40 px-2 py-0.5 rounded border border-red-900/60">❌ 失憶判定！連對進度歸零</span>}
                     </div>
-                    
+
                     {mustTypeCorrectly && (
                       <div className="bg-slate-900 p-4 rounded-xl border border-emerald-900/50 mb-2">
                         <span className="text-xs text-slate-500 block mb-1">神經鏈結斷裂，請看著答案親手輸入一次：</span>
@@ -750,11 +753,11 @@
                     )}
 
                     <input type="text" ref={inputRef} value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder="在此輸入..." autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" className={`w-full py-4 px-6 bg-slate-900 border-2 rounded-xl text-xl font-bold font-mono text-center transition-colors tracking-widest focus:outline-none ${typoCount === 1 ? 'border-amber-500/50 text-amber-300' : mustTypeCorrectly ? 'border-emerald-500 text-emerald-300' : 'border-slate-700 text-indigo-300 focus:border-indigo-500'}`} />
-                    
+
                     <button type="submit" className={`w-full py-3 font-bold rounded-xl transition-colors shadow-md text-white ${mustTypeCorrectly ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
                       {mustTypeCorrectly ? "已確實手寫記下 (Enter)" : "送出檢查 (Enter)"}
                     </button>
-                    
+
                     {/* 誠實與放棄按鈕 */}
                     {!mustTypeCorrectly && (
                       <div className="flex justify-between items-center mt-3 px-1">
@@ -798,7 +801,7 @@
                   <button onClick={() => setShowPreviewModal(false)} className="p-2 text-slate-400 hover:text-slate-200 bg-slate-700 rounded-full">✕</button>
                 </div>
                 <div className="p-4 flex-1 overflow-y-auto space-y-2">
-                  {getDailyWords().baseWords.length === 0 ? <div className="text-center py-12 text-slate-500">此天數目前沒有單字。</div> : 
+                  {getDailyWords().baseWords.length === 0 ? <div className="text-center py-12 text-slate-500">此天數目前沒有單字。</div> :
                     getDailyWords().baseWords.map((word, idx) => (
                       <div key={idx} className="flex items-center gap-3 p-3 bg-slate-900/50 rounded-xl border border-slate-700/60">
                         <button onClick={() => speak(word.en)} className="p-2 bg-slate-800 text-indigo-400 rounded-lg border border-slate-700"><IconVolume /></button>
@@ -829,8 +832,8 @@
                   <button onClick={() => setShowMistakeModal(false)} className="p-2 text-slate-400 hover:text-slate-200 bg-slate-700 rounded-full">✕</button>
                 </div>
                 <div className="p-4 flex-1 overflow-y-auto space-y-2">
-                  {activeMistakesList.length === 0 ? <div className="text-center py-12 text-slate-500">目前沒有弱點負債，大腦狀態極佳！🎉</div> : 
-                    activeMistakesList.sort((a,b) => b.mistakesCount - a.mistakesCount).map((item) => {
+                  {activeMistakesList.length === 0 ? <div className="text-center py-12 text-slate-500">目前沒有弱點負債，大腦狀態極佳！🎉</div> :
+                    activeMistakesList.sort((a, b) => b.mistakesCount - a.mistakesCount).map((item) => {
                       const target = Math.min(item.mistakesCount * 2, 6);
                       const current = item.correctCount || 0;
                       const progress = Math.min((current / target) * 100, 100);
@@ -852,7 +855,7 @@
                               <span className="text-emerald-400">連對: {current} / {target}</span>
                             </div>
                             <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700">
-                              <div className="bg-emerald-500 h-2 transition-all duration-300" style={{width: `${progress}%`}}></div>
+                              <div className="bg-emerald-500 h-2 transition-all duration-300" style={{ width: `${progress}%` }}></div>
                             </div>
                           </div>
                         </div>
@@ -876,8 +879,8 @@
                   <button onClick={() => setShowHistoryModal(false)} className="p-2 text-slate-400 hover:text-slate-200 bg-slate-700 rounded-full">✕</button>
                 </div>
                 <div className="p-4 flex-1 overflow-y-auto space-y-2">
-                  {historyTotal === 0 ? <div className="text-center py-12 text-slate-500">歷史殿堂尚無單字。</div> : 
-                    Object.values(historicalMistakes).sort((a,b) => b.totalFails - a.totalFails).map((item) => {
+                  {historyTotal === 0 ? <div className="text-center py-12 text-slate-500">歷史殿堂尚無單字。</div> :
+                    Object.values(historicalMistakes).sort((a, b) => b.totalFails - a.totalFails).map((item) => {
                       const nextDate = new Date(item.archivedDate + item.interval * 24 * 60 * 60 * 1000);
                       return (
                         <div key={item.data.en} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-slate-700/60 gap-4">
@@ -915,7 +918,18 @@
     root.render(<App />);
   </script>
   <style>
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
   </style>
 </body>
+
 </html>
