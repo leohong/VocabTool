@@ -33,31 +33,6 @@
     ];
 
     function App() {
-      // ==========================================
-      // --- 0. 資料庫版本遷移 (V06 -> 中性版本 vocab_) ---
-      // ==========================================
-      (() => {
-        const oldCurrentDB = localStorage.getItem('vocabV06_currentDB');
-        if (oldCurrentDB && !localStorage.getItem('vocab_currentDB')) {
-          localStorage.setItem('vocab_currentDB', oldCurrentDB);
-          const oldDbList = localStorage.getItem('vocabV06_dbList');
-          if (oldDbList) {
-            localStorage.setItem('vocab_dbList', oldDbList);
-            try {
-              const dbs = JSON.parse(oldDbList);
-              dbs.forEach(db => {
-                ['state', 'customVocab', 'wordsPerDay', 'ghostsPerDay', 'tempSession'].forEach(key => {
-                  const val = localStorage.getItem(`vocabV06_${key}_${db}`);
-                  if (val) {
-                    localStorage.setItem(`vocab_${key}_${db}`, val);
-                  }
-                });
-              });
-            } catch (e) {}
-          }
-        }
-      })();
-
       // ----------------------------------------
       // --- 1. 狀態與資料庫管理 ---
       // ----------------------------------------
@@ -460,9 +435,10 @@
               
               let importedState = { ...defaultState, ...data.state };
               
-              // JSON 智慧分流 (V05 升級無痛轉換)
+              // JSON 智慧分流 (判斷是否為舊版 V05 升級)
               const mistakeKeys = Object.keys(importedState.mistakes || {});
-              if (mistakeKeys.length > 0) {
+              const isV05Upgrade = !data.state.historicalMistakes; // V05 備份檔案沒有歷史殿堂欄位
+              if (isV05Upgrade && mistakeKeys.length > 0) {
                  const toHistory = window.confirm(`💡 系統升級詢問：\n\n偵測到備份檔中包含 ${mistakeKeys.length} 個「當前錯題」。\n\n您是否希望將它們直接轉移至【🏛️ 歷史殿堂】？\n(推薦 V05 升級者使用，能大幅減輕初期雙倍消除的負擔)\n\n▶ 按「確定」：全數轉移至歷史殿堂 (進行間隔突襲)\n▶ 按「取消」：保留在當前錯題集中營`);
                  
                  if (toHistory) {
