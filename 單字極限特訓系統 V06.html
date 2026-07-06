@@ -33,12 +33,37 @@
     ];
 
     function App() {
+      // ==========================================
+      // --- 0. 資料庫版本遷移 (V06 -> 中性版本 vocab_) ---
+      // ==========================================
+      (() => {
+        const oldCurrentDB = localStorage.getItem('vocabV06_currentDB');
+        if (oldCurrentDB && !localStorage.getItem('vocab_currentDB')) {
+          localStorage.setItem('vocab_currentDB', oldCurrentDB);
+          const oldDbList = localStorage.getItem('vocabV06_dbList');
+          if (oldDbList) {
+            localStorage.setItem('vocab_dbList', oldDbList);
+            try {
+              const dbs = JSON.parse(oldDbList);
+              dbs.forEach(db => {
+                ['state', 'customVocab', 'wordsPerDay', 'ghostsPerDay', 'tempSession'].forEach(key => {
+                  const val = localStorage.getItem(`vocabV06_${key}_${db}`);
+                  if (val) {
+                    localStorage.setItem(`vocab_${key}_${db}`, val);
+                  }
+                });
+              });
+            } catch (e) {}
+          }
+        }
+      })();
+
       // ----------------------------------------
       // --- 1. 狀態與資料庫管理 ---
       // ----------------------------------------
-      const [dbName, setDbName] = useState(() => localStorage.getItem('vocabV06_currentDB') || 'vocab_2000');
+      const [dbName, setDbName] = useState(() => localStorage.getItem('vocab_currentDB') || 'vocab_2000');
       const [dbList, setDbList] = useState(() => {
-        const saved = localStorage.getItem('vocabV06_dbList');
+        const saved = localStorage.getItem('vocab_dbList');
         return saved ? JSON.parse(saved) : ['vocab_2000', 'vocab_7000'];
       });
 
@@ -66,17 +91,17 @@
       const [queue, setQueue] = useState([]);                  
       const [currentWord, setCurrentWord] = useState(null);    
       const [currentSessionWords, setCurrentSessionWords] = useState([]); 
-
+      
       const [userInput, setUserInput] = useState('');       
       const [typoCount, setTypoCount] = useState(0);       
       const [mustTypeCorrectly, setMustTypeCorrectly] = useState(false); 
-
+      
       const inputRef = useRef(null);
 
       // --- 系統同步與續傳 ---
       useEffect(() => {
-        localStorage.setItem('vocabV06_currentDB', dbName);
-        const savedState = localStorage.getItem(`vocabV06_state_${dbName}`);
+        localStorage.setItem('vocab_currentDB', dbName);
+        const savedState = localStorage.getItem(`vocab_state_${dbName}`);
         if (savedState) {
           const parsed = JSON.parse(savedState);
           setState({ ...defaultState, ...parsed });
@@ -84,16 +109,16 @@
           setState(defaultState);
         }
         
-        const savedVocab = localStorage.getItem(`vocabV06_customVocab_${dbName}`);
+        const savedVocab = localStorage.getItem(`vocab_customVocab_${dbName}`);
         setVocabList(savedVocab ? JSON.parse(savedVocab) : rawVocab);
         
-        const savedWords = localStorage.getItem(`vocabV06_wordsPerDay_${dbName}`);
+        const savedWords = localStorage.getItem(`vocab_wordsPerDay_${dbName}`);
         setWordsPerDay(savedWords ? parseInt(savedWords, 10) : 50);
 
-        const savedGhosts = localStorage.getItem(`vocabV06_ghostsPerDay_${dbName}`);
+        const savedGhosts = localStorage.getItem(`vocab_ghostsPerDay_${dbName}`);
         setGhostsPerDay(savedGhosts ? parseInt(savedGhosts, 10) : 10);
 
-        const tempSession = localStorage.getItem(`vocabV06_tempSession_${dbName}`);
+        const tempSession = localStorage.getItem(`vocab_tempSession_${dbName}`);
         if (tempSession) {
           const parsed = JSON.parse(tempSession);
           if (parsed.queue && parsed.queue.length > 0 && parsed.date === new Date().toDateString()) {
@@ -104,31 +129,31 @@
               setCurrentWord(parsed.queue[0]);
               setView(parsed.view);
             } else {
-              localStorage.removeItem(`vocabV06_tempSession_${dbName}`);
+              localStorage.removeItem(`vocab_tempSession_${dbName}`);
             }
           }
         }
       }, [dbName]);
 
       useEffect(() => {
-        if (dbName) localStorage.setItem(`vocabV06_state_${dbName}`, JSON.stringify(state));
+        if (dbName) localStorage.setItem(`vocab_state_${dbName}`, JSON.stringify(state));
       }, [state, dbName]);
 
       useEffect(() => {
-        if (dbName) localStorage.setItem(`vocabV06_wordsPerDay_${dbName}`, wordsPerDay);
+        if (dbName) localStorage.setItem(`vocab_wordsPerDay_${dbName}`, wordsPerDay);
       }, [wordsPerDay, dbName]);
 
       useEffect(() => {
-        if (dbName) localStorage.setItem(`vocabV06_ghostsPerDay_${dbName}`, ghostsPerDay);
+        if (dbName) localStorage.setItem(`vocab_ghostsPerDay_${dbName}`, ghostsPerDay);
       }, [ghostsPerDay, dbName]);
 
       // 自動暫存
       useEffect(() => {
         if (view !== 'dashboard' && view !== 'summary') {
           const sessionData = { queue, currentSessionWords, sessionType, view, date: new Date().toDateString() };
-          localStorage.setItem(`vocabV06_tempSession_${dbName}`, JSON.stringify(sessionData));
+          localStorage.setItem(`vocab_tempSession_${dbName}`, JSON.stringify(sessionData));
         } else if (view === 'summary') {
-          localStorage.removeItem(`vocabV06_tempSession_${dbName}`);
+          localStorage.removeItem(`vocab_tempSession_${dbName}`);
         }
       }, [queue, view, sessionType, dbName, currentSessionWords]);
 
@@ -460,14 +485,14 @@
               if (!currentDbList.includes(data.dbName)) {
                 currentDbList.push(data.dbName);
                 setDbList(currentDbList);
-                localStorage.setItem('vocabV06_dbList', JSON.stringify(currentDbList));
+                localStorage.setItem('vocab_dbList', JSON.stringify(currentDbList));
               }
               
-              localStorage.setItem('vocabV06_currentDB', data.dbName);
-              localStorage.setItem(`vocabV06_state_${data.dbName}`, JSON.stringify(importedState));
-              localStorage.setItem(`vocabV06_customVocab_${data.dbName}`, JSON.stringify(data.vocabList || rawVocab));
-              localStorage.setItem(`vocabV06_wordsPerDay_${data.dbName}`, data.wordsPerDay || 50);
-              localStorage.setItem(`vocabV06_ghostsPerDay_${data.dbName}`, data.ghostsPerDay || 10);
+              localStorage.setItem('vocab_currentDB', data.dbName);
+              localStorage.setItem(`vocab_state_${data.dbName}`, JSON.stringify(importedState));
+              localStorage.setItem(`vocab_customVocab_${data.dbName}`, JSON.stringify(data.vocabList || rawVocab));
+              localStorage.setItem(`vocab_wordsPerDay_${data.dbName}`, data.wordsPerDay || 50);
+              localStorage.setItem(`vocab_ghostsPerDay_${data.dbName}`, data.ghostsPerDay || 10);
 
               setDbName(data.dbName);
               setState(importedState);
@@ -543,7 +568,7 @@
             });
             if (importedVocab.length > 0) {
               setVocabList(importedVocab);
-              localStorage.setItem(`vocabV06_customVocab_${dbName}`, JSON.stringify(importedVocab));
+              localStorage.setItem(`vocab_customVocab_${dbName}`, JSON.stringify(importedVocab));
               alert(`字典匯入成功！共 ${importedVocab.length} 字。`);
             }
           } else { alert("無法識別檔案格式。"); }
@@ -559,7 +584,7 @@
           if (cleaned && !dbList.includes(cleaned)) {
             const updated = [...dbList, cleaned];
             setDbList(updated);
-            localStorage.setItem('vocabV06_dbList', JSON.stringify(updated));
+            localStorage.setItem('vocab_dbList', JSON.stringify(updated));
           }
           if (cleaned) setDbName(cleaned);
         }
@@ -575,7 +600,7 @@
           const updatedList = dbList.filter(name => name !== dbName);
           const nextDb = updatedList.length > 0 ? updatedList[0] : 'vocab_2000';
           setDbList(updatedList);
-          localStorage.setItem('vocabV06_dbList', JSON.stringify(updatedList.length > 0 ? updatedList : ['vocab_2000']));
+          localStorage.setItem('vocab_dbList', JSON.stringify(updatedList.length > 0 ? updatedList : ['vocab_2000']));
           setDbName(nextDb);
           alert(`已刪除字庫【${dbName}】。`);
           window.location.reload();
