@@ -945,6 +945,9 @@
             {/* 標題獨立在最前面 (手機版佔用第一行) */}
             <h1 className="text-lg font-bold text-indigo-400 flex items-center gap-1.5 shrink-0">
               <IconBook /> 極限特訓
+              <a href="https://github.com/leohong/VocabTool/blob/main/README.md" target="_blank" rel="noopener noreferrer" className="ml-2 px-1.5 py-0.5 text-[10px] font-medium text-indigo-300 bg-indigo-950/50 hover:bg-indigo-900/60 border border-indigo-500/30 rounded-md transition-colors flex items-center gap-1">
+                📖 說明書
+              </a>
             </h1>
 
             {/* 狀態、打卡、進度強制放在同一水平容器中 (手機版佔用第二行) */}
@@ -1007,6 +1010,10 @@
                   <button onClick={() => { setShowDictModal(true); resetDictState(); }} className="text-indigo-400 hover:text-indigo-300 underline py-1 transition-colors flex items-center gap-1">
                     📖 查字典與新增單字
                   </button>
+                  <span className="text-slate-600">|</span>
+                  <a href="https://github.com/leohong/VocabTool/blob/main/README.md" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 underline py-1 transition-colors flex items-center gap-1">
+                    📖 系統說明書
+                  </a>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 mt-1">
