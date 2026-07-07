@@ -2,6 +2,8 @@
 
 > 一款基於「主動回想」、「動態錯題懲罰」與「間隔重複」的純前端單字記憶 Web 應用程式。
 
+🔗 **線上即用網址**：[https://leohong.github.io/VocabTool/](https://leohong.github.io/VocabTool/)
+
 專為高強度的長期單字記憶計畫（如征服國中 2,000 單字、高中 7,000 單字）而設計。透過極簡的單一 HTML 檔案架構，結合雙階段流水線訓練、嚴格的拼寫容錯機制、動態間隔重複演算法，以及直覺的視覺化狀態燈號，幫助學習者打破遺忘曲線，將單字真正刻進長期記憶與肌肉記憶中。
 
 ---
@@ -46,11 +48,15 @@
 
 ## 🚀 如何開始 (Getting Started)
 
-本系統為單一 HTML 檔案架構 (Single File Application)，依賴 CDN 載入 React 與 Tailwind CSS，**無需任何安裝或建置步驟**。
+本系統為單一 HTML 檔案架構 (Single File Application)，支援線上免安裝即用，亦可下載至本地執行。
 
-1.  將本專案 clone 到本地端，或直接下載 `index.html`。
-2.  在任何現代瀏覽器（Chrome, Edge, Safari, Firefox）中直接雙擊點開該 HTML 檔案。
-3.  開始你的極限特訓！
+### 方式 A：線上即用 (推薦)
+直接開啟瀏覽器造訪 **[線上特訓系統網址](https://leohong.github.io/VocabTool/)**。
+
+### 方式 B：本地執行
+1. 將本專案 clone 到本地端，或直接下載 `index.html`。
+2. 在任何現代瀏覽器（Chrome, Edge, Safari, Firefox）中直接雙擊點開該 HTML 檔案。
+3. 開始你的極限特訓！
 
 ---
 
