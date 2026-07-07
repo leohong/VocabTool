@@ -35,6 +35,32 @@
       { en: 'acknowledgement', zh: '承認/確認 (範例字)', pos: 'n.' }
     ];
 
+    const mapPos = (pos) => {
+      if (!pos) return 'n.';
+      const p = pos.toLowerCase().trim();
+      if (p.includes('noun')) return 'n.';
+      if (p.includes('verb')) return 'v.';
+      if (p.includes('adjective')) return 'adj.';
+      if (p.includes('adverb')) return 'adv.';
+      if (p.includes('preposition')) return 'prep.';
+      if (p.includes('conjunction')) return 'conj.';
+      if (p.includes('pronoun')) return 'pron.';
+      if (p.includes('determiner')) return 'det.';
+      if (p.includes('article')) return 'art.';
+      if (p.includes('idiom')) return 'idiom';
+      return pos;
+    };
+
+    const maskExample = (eg, word) => {
+      if (!eg || !word) return '';
+      const parts = eg.split(/\s*(\([^)]+\))\s*$/);
+      const enPart = parts[0];
+      const zhPart = parts[1] || '';
+      const regex = new RegExp('\\b' + word.trim() + '[a-zA-Z]*\\b', 'gi');
+      const maskedEn = enPart.replace(regex, '______');
+      return zhPart ? `${maskedEn} ${zhPart}` : maskedEn;
+    };
+
     function App() {
       // ----------------------------------------
       // --- 1. 狀態與資料庫管理 ---
@@ -64,7 +90,329 @@
       const [showMistakeModal, setShowMistakeModal] = useState(false);
       const [showHistoryModal, setShowHistoryModal] = useState(false);
       const [showPreviewModal, setShowPreviewModal] = useState(false);
+      const [showAllPreviewModal, setShowAllPreviewModal] = useState(false);
       const [sessionType, setSessionType] = useState('daily');
+
+      // --- 字典與手動加字狀態 ---
+      const [showDictModal, setShowDictModal] = useState(false);
+      const [searchQuery, setSearchQuery] = useState('');
+      const [searchLoading, setSearchLoading] = useState(false);
+      const [searchError, setSearchError] = useState(null);
+      const [dictResults, setDictResults] = useState([]);
+      const [localMatches, setLocalMatches] = useState([]);
+      const [formEn, setFormEn] = useState('');
+      const [formPos, setFormPos] = useState('n.');
+      const [formZh, setFormZh] = useState('');
+      const [formEg, setFormEg] = useState('');
+      const [insertPosition, setInsertPosition] = useState('end');
+
+      // --- 編輯單字與全字庫過濾分頁狀態 ---
+      const [editingIndex, setEditingIndex] = useState(-1);
+      const [editEn, setEditEn] = useState('');
+      const [editPos, setEditPos] = useState('');
+      const [editZh, setEditZh] = useState('');
+      const [editEg, setEditEg] = useState('');
+      const [allSearchQuery, setAllSearchQuery] = useState('');
+      const [allPage, setAllPage] = useState(1);
+      const itemsPerPage = 50;
+
+      const handleDeleteWord = (indexInVocab) => {
+        const wordToDelete = vocabList[indexInVocab];
+        if (!wordToDelete) return;
+        if (!window.confirm(`確定要從此字庫中「徹底刪除」單字【${wordToDelete.en}】嗎？\n此動作無法還原。`)) return;
+
+        const updatedList = [...vocabList];
+        updatedList.splice(indexInVocab, 1);
+        setVocabList(updatedList);
+        localStorage.setItem(`vocab_customVocab_${dbName}`, JSON.stringify(updatedList));
+
+        // 如果目前處於特訓模式，且刪除的是當前單字，則自動跳過
+        if (view === 'scanning' || view === 'spelling') {
+          const newQueue = queue.filter(w => w.en.trim().toLowerCase() !== wordToDelete.en.trim().toLowerCase());
+          setQueue(newQueue);
+          if (newQueue.length === 0) {
+            setView('summary');
+          } else {
+            if (currentWord && currentWord.en.trim().toLowerCase() === wordToDelete.en.trim().toLowerCase()) {
+              setCurrentWord(newQueue[0]);
+              setUserInput('');
+              setTypoCount(0);
+              setMustTypeCorrectly(false);
+            }
+          }
+        }
+      };
+
+      const startEditing = (idx) => {
+        const w = vocabList[idx];
+        if (!w) return;
+        setEditingIndex(idx);
+        setEditEn(w.en);
+        setEditPos(w.pos);
+        setEditZh(w.zh);
+        setEditEg(w.eg || '');
+      };
+
+      const handleSaveEdit = (e) => {
+        if (e) e.preventDefault();
+        if (editingIndex === -1) return;
+        if (!editEn.trim() || !editZh.trim()) {
+          alert('請填寫英文單字與中文解釋！');
+          return;
+        }
+
+        const updatedList = [...vocabList];
+        updatedList[editingIndex] = {
+          en: editEn.trim(),
+          pos: editPos.trim(),
+          zh: editZh.trim(),
+          eg: editEg.trim()
+        };
+        setVocabList(updatedList);
+        localStorage.setItem(`vocab_customVocab_${dbName}`, JSON.stringify(updatedList));
+        
+        // 同步更新當前正在特訓的字
+        if ((view === 'scanning' || view === 'spelling') && currentWord) {
+          const originalWord = vocabList[editingIndex];
+          if (currentWord.en.trim().toLowerCase() === originalWord.en.trim().toLowerCase()) {
+            setCurrentWord({
+              ...currentWord,
+              en: editEn.trim(),
+              pos: editPos.trim(),
+              zh: editZh.trim(),
+              eg: editEg.trim()
+            });
+          }
+          const updatedQueue = queue.map(qw => {
+            if (qw.en.trim().toLowerCase() === originalWord.en.trim().toLowerCase()) {
+              return {
+                ...qw,
+                en: editEn.trim(),
+                pos: editPos.trim(),
+                zh: editZh.trim(),
+                eg: editEg.trim()
+              };
+            }
+            return qw;
+          });
+          setQueue(updatedQueue);
+        }
+
+        setEditingIndex(-1);
+      };
+
+      const getFilteredVocab = () => {
+        const q = allSearchQuery.trim().toLowerCase();
+        if (!q) return vocabList.map((w, originalIdx) => ({ ...w, originalIdx }));
+        return vocabList
+          .map((w, originalIdx) => ({ ...w, originalIdx }))
+          .filter(w => w.en.toLowerCase().includes(q) || w.zh.toLowerCase().includes(q) || w.pos.toLowerCase().includes(q));
+      };
+
+      const resetDictState = () => {
+        setSearchQuery('');
+        setSearchLoading(false);
+        setSearchError(null);
+        setDictResults([]);
+        setLocalMatches([]);
+        setFormEn('');
+        setFormPos('n.');
+        setFormZh('');
+        setFormEg('');
+        setInsertPosition('end');
+      };
+
+      const translateText = async (text) => {
+        try {
+          const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|zh-TW`);
+          const json = await res.json();
+          return json.responseData.translatedText || '';
+        } catch (e) {
+          console.error('Translation error:', e);
+          return '';
+        }
+      };
+
+      const handleSearch = async (e) => {
+        if (e) e.preventDefault();
+        const query = searchQuery.trim().toLowerCase();
+        if (!query) return;
+
+        setSearchLoading(true);
+        setSearchError(null);
+        setDictResults([]);
+
+        // 1. 本地跨庫重複性檢查
+        const matches = [];
+        dbList.forEach(db => {
+          const listStr = localStorage.getItem(`vocab_customVocab_${db}`);
+          if (listStr) {
+            const list = JSON.parse(listStr);
+            const foundIdx = list.findIndex(w => w.en.trim().toLowerCase() === query);
+            if (foundIdx !== -1) {
+              const wPerDay = parseInt(localStorage.getItem(`vocab_wordsPerDay_${db}`) || '50', 10);
+              const dayNum = Math.floor(foundIdx / wPerDay) + 1;
+              matches.push({ db, word: list[foundIdx], day: dayNum });
+            }
+          }
+        });
+        setLocalMatches(matches);
+
+        // 如果目前庫有匹配，預先載入
+        const currentDbMatch = matches.find(m => m.db === dbName);
+        if (currentDbMatch) {
+          setFormEn(currentDbMatch.word.en);
+          setFormPos(currentDbMatch.word.pos);
+          setFormZh(currentDbMatch.word.zh);
+          setFormEg(currentDbMatch.word.eg || '');
+        } else {
+          setFormEn(searchQuery.trim());
+          setFormPos('n.');
+          setFormZh('');
+          setFormEg('');
+        }
+
+        // 2. 請求 Free Dictionary API + MyMemory 翻譯
+        try {
+          const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${query}`);
+          if (!dictRes.ok) {
+            if (dictRes.status === 404) {
+              throw new Error('找不到該單字的定義');
+            }
+            throw new Error('Dictionary API 連線失敗');
+          }
+          
+          const dictData = await dictRes.json();
+          if (!dictData || dictData.length === 0) {
+            throw new Error('未找到單字定義');
+          }
+
+          // 翻譯單字本身取得主中文解釋
+          const wordZh = await translateText(query);
+
+          // 收集全部可用的例句
+          const allExamples = [];
+          dictData.forEach(entry => {
+            entry.meanings.forEach(meaning => {
+              const pos = mapPos(meaning.partOfSpeech);
+              meaning.definitions.forEach(def => {
+                if (def.example) {
+                  allExamples.push({
+                    pos: pos,
+                    egEn: def.example
+                  });
+                }
+              });
+            });
+          });
+
+          const results = [];
+          const firstEntry = dictData[0];
+          
+          // 彙整所有的釋義與例句
+          firstEntry.meanings.forEach(meaning => {
+            const pos = mapPos(meaning.partOfSpeech);
+            meaning.definitions.forEach(def => {
+              // 尋找適合的例句
+              let chosenEgEn = def.example || '';
+              
+              // 智慧退路 1：若該釋義沒有例句，則優先借用同詞性的其他例句；若再沒有，借用任何其他例句
+              if (!chosenEgEn) {
+                const samePosEg = allExamples.find(e => e.pos === pos);
+                if (samePosEg) {
+                  chosenEgEn = samePosEg.egEn;
+                } else if (allExamples.length > 0) {
+                  chosenEgEn = allExamples[0].egEn;
+                }
+              }
+
+              // 智慧退路 2：若整個單字在 API 中完全無任何可用例句（如 algorithm），則使用其英文定義構造一條學術解釋型例句
+              if (!chosenEgEn && def.definition) {
+                const cleanWord = searchQuery.trim();
+                const article = /^[aeiou]/i.test(cleanWord) ? 'An' : 'A';
+                chosenEgEn = `${article} ${cleanWord} is defined as: ${def.definition}`;
+              }
+
+              results.push({
+                word: searchQuery.trim(),
+                pos: pos,
+                enDef: def.definition,
+                egEn: chosenEgEn,
+                zh: wordZh || '', 
+                eg: '' 
+              });
+            });
+          });
+
+          if (results.length === 0) {
+            throw new Error('未找到單字定義內容');
+          }
+
+          // 限制只對前 4 個項目進行並行翻譯，防止請求過多
+          const translationPromises = results.slice(0, 4).map(async (item) => {
+            if (item.egEn) {
+              const egZh = await translateText(item.egEn);
+              item.eg = egZh ? `${item.egEn} (${egZh})` : item.egEn;
+            }
+          });
+
+          await Promise.all(translationPromises);
+
+          setDictResults(results);
+          setFormEn(results[0].word);
+          setFormPos(results[0].pos);
+          setFormZh(results[0].zh);
+          setFormEg(results[0].eg || results[0].egEn || '');
+        } catch (err) {
+          console.error(err);
+          setSearchError(`查詢失敗（${err.message}）。您仍可以直接在下方手動輸入。`);
+        } finally {
+          setSearchLoading(false);
+        }
+      };
+
+      const handleAddWord = (e) => {
+        e.preventDefault();
+        const enVal = formEn.trim();
+        const posVal = formPos.trim();
+        const zhVal = formZh.trim();
+        const egVal = formEg.trim();
+
+        if (!enVal || !zhVal) {
+          alert('請填寫英文單字與中文解釋！');
+          return;
+        }
+
+        const newWord = { en: enVal, pos: posVal, zh: zhVal };
+        if (egVal) newWord.eg = egVal;
+
+        const existingIdx = vocabList.findIndex(w => w.en.trim().toLowerCase() === enVal.toLowerCase());
+        let updatedList = [...vocabList];
+
+        if (existingIdx !== -1) {
+          if (!window.confirm(`單字【${enVal}】已存在目前字庫中，是否覆寫？`)) return;
+          updatedList[existingIdx] = { ...updatedList[existingIdx], ...newWord };
+        } else {
+          if (insertPosition === 'current') {
+            const targetIndex = currentDay * wordsPerDay;
+            updatedList.splice(Math.min(targetIndex, updatedList.length), 0, newWord);
+          } else {
+            updatedList.push(newWord);
+          }
+        }
+
+        setVocabList(updatedList);
+        localStorage.setItem(`vocab_customVocab_${dbName}`, JSON.stringify(updatedList));
+        
+        alert(`成功將單字【${enVal}】${existingIdx !== -1 ? '修改' : '新增'}至目前字庫中！`);
+        
+        setFormEn('');
+        setFormPos('n.');
+        setFormZh('');
+        setFormEg('');
+        setDictResults([]);
+        setLocalMatches([]);
+      };
 
       const [queue, setQueue] = useState([]);
       const [currentWord, setCurrentWord] = useState(null);
@@ -647,9 +995,19 @@
                   </button>
                 </div>
 
-                <button onClick={() => setShowPreviewModal(true)} className="text-xs text-indigo-400 hover:text-indigo-300 underline font-medium text-center py-1 transition-colors">
-                  🔍 預覽今日特訓新單字 ({getDailyWords().baseWords.length} 字)
-                </button>
+                <div className="flex flex-wrap justify-center gap-3 text-xs font-medium">
+                  <button onClick={() => setShowPreviewModal(true)} className="text-indigo-400 hover:text-indigo-300 underline py-1 transition-colors">
+                    🔍 預覽今日新單字 ({getDailyWords().baseWords.length} 字)
+                  </button>
+                  <span className="text-slate-600">|</span>
+                  <button onClick={() => { setShowAllPreviewModal(true); setAllSearchQuery(''); setAllPage(1); }} className="text-indigo-400 hover:text-indigo-300 underline py-1 transition-colors">
+                    🗂️ 預覽全字庫單字 ({vocabList.length} 字)
+                  </button>
+                  <span className="text-slate-600">|</span>
+                  <button onClick={() => { setShowDictModal(true); resetDictState(); }} className="text-indigo-400 hover:text-indigo-300 underline py-1 transition-colors flex items-center gap-1">
+                    📖 查字典與新增單字
+                  </button>
+                </div>
 
                 <div className="grid grid-cols-2 gap-3 mt-1">
                   <div className="bg-slate-800 p-4 rounded-xl shadow-md border border-slate-700 text-center flex flex-col justify-center">
@@ -716,12 +1074,34 @@
                   <div className="text-slate-400 font-medium flex items-center gap-2"><IconAlert />第一關：快速篩選 (剩 {queue.length} 字)</div>
                   <button onClick={handleExitSession} className="text-xs px-3 py-1.5 bg-slate-800 hover:bg-red-950/40 text-slate-400 hover:text-red-400 rounded-lg border border-slate-700 transition-colors">暫停存檔</button>
                 </div>
-                <div className="bg-slate-800 w-full aspect-[4/3] max-h-[400px] rounded-3xl shadow-2xl border border-slate-700 flex flex-col items-center justify-center p-8 mb-8 text-center relative touch-none select-none">
+                <div className="bg-slate-800 w-full min-h-[320px] rounded-3xl shadow-2xl border border-slate-700 flex flex-col items-center justify-center p-6 md:p-8 mb-8 text-center relative touch-none select-none">
                   <button onClick={() => speak(currentWord.en)} className="absolute top-6 right-6 p-3 bg-slate-700 hover:bg-indigo-900 text-slate-300 rounded-full transition-colors"><IconVolume /></button>
-                  <span className="text-indigo-400 font-mono font-medium mb-4">{currentWord.pos}</span>
-                  <h2 className="text-5xl md:text-6xl font-black text-slate-100 tracking-tight mb-6">{currentWord.en}</h2>
-                  <p className="text-2xl text-slate-300">{currentWord.zh}</p>
-                  {currentWord._isGhost && <div className="absolute top-6 left-6 animate-bounce"><span className="text-2xl" title="歷史幽靈突襲">👻</span></div>}
+                  
+                  {/* 編輯與刪除按鈕 */}
+                  <div className="absolute top-6 left-6 flex gap-2">
+                    <button 
+                      onClick={() => startEditing(vocabList.findIndex(w => w.en.trim().toLowerCase() === currentWord.en.trim().toLowerCase()))} 
+                      className="p-2 bg-slate-700 hover:bg-indigo-955 text-indigo-300 rounded-full transition-colors text-xs"
+                      title="編輯此單字"
+                    >
+                      ✏️
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteWord(vocabList.findIndex(w => w.en.trim().toLowerCase() === currentWord.en.trim().toLowerCase()))} 
+                      className="p-2 bg-slate-700 hover:bg-rose-955 text-rose-300 rounded-full transition-colors text-xs"
+                      title="徹底刪除此單字"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+
+                  <span className="text-indigo-400 font-mono font-medium mb-3 flex items-center gap-1.5 justify-center">
+                    {currentWord._isGhost && <span className="animate-bounce" title="歷史幽靈突襲">👻</span>}
+                    {currentWord.pos}
+                  </span>
+                  <h2 className="text-5xl md:text-6xl font-black text-slate-100 tracking-tight mb-4">{currentWord.en}</h2>
+                  <p className="text-2xl text-slate-300 mb-2">{currentWord.zh}</p>
+                  {currentWord.eg && <p className="text-sm text-slate-400 italic mt-3 max-w-md break-words border-t border-slate-700/50 pt-2">{currentWord.eg}</p>}
                 </div>
                 <div className="w-full grid grid-cols-2 gap-4">
                   {/* UI左右對調：左滑不熟，右滑認識 */}
@@ -740,11 +1120,37 @@
                 </div>
                 <div className="bg-slate-800 w-full rounded-3xl shadow-2xl border border-slate-700 p-8 mb-6 text-center relative">
                   <button onClick={() => speak(currentWord.en)} className="absolute top-4 right-4 p-2 bg-slate-700 hover:bg-indigo-900 text-slate-400 rounded-full transition-colors"><IconVolume /></button>
-                  <span className="text-indigo-400 font-mono font-medium mb-2 block">{currentWord.pos}</span>
+                  
+                  {/* 編輯與刪除按鈕 */}
+                  <div className="absolute top-4 left-4 flex gap-2">
+                    <button 
+                      onClick={() => startEditing(vocabList.findIndex(w => w.en.trim().toLowerCase() === currentWord.en.trim().toLowerCase()))} 
+                      className="p-1.5 bg-slate-700 hover:bg-indigo-955 text-indigo-300 rounded-full transition-colors text-xs"
+                      title="編輯此單字"
+                    >
+                      ✏️
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteWord(vocabList.findIndex(w => w.en.trim().toLowerCase() === currentWord.en.trim().toLowerCase()))} 
+                      className="p-1.5 bg-slate-700 hover:bg-rose-955 text-rose-300 rounded-full transition-colors text-xs"
+                      title="徹底刪除此單字"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+
+                  <span className="text-indigo-400 font-mono font-medium mb-2 block flex items-center gap-1.5 justify-center">
+                    {currentWord._isGhost && <span className="animate-bounce" title="歷史幽靈突襲">👻</span>}
+                    {currentWord._isHistoryCheck && <span title="歷史抽查">🏛️</span>}
+                    {currentWord.pos}
+                  </span>
                   <h2 className="text-3xl md:text-4xl font-black text-slate-100 tracking-tight mb-2">{currentWord.zh}</h2>
-                  <div className="text-sm font-mono tracking-widest text-slate-500 mt-2">{currentWord.en.length} 字母 ( {Array(currentWord.en.length).fill('_').join(' ')} )</div>
-                  {currentWord._isGhost && <div className="absolute top-4 left-4 animate-bounce"><span className="text-2xl" title="歷史幽靈突襲">👻</span></div>}
-                  {currentWord._isHistoryCheck && <div className="absolute top-4 left-4"><span className="text-2xl" title="歷史抽查">🏛️</span></div>}
+                  <div className="text-sm font-mono tracking-widest text-slate-500 mt-2 mb-2">{currentWord.en.length} 字母 ( {Array(currentWord.en.length).fill('_').join(' ')} )</div>
+                  {currentWord.eg && (
+                    <div className="text-xs text-slate-400 italic max-w-md mx-auto break-words border-t border-slate-700/50 pt-2.5 mt-2.5">
+                      <span className="text-slate-500 font-bold not-italic">Hint:</span> {maskExample(currentWord.eg, currentWord.en)}
+                    </div>
+                  )}
                 </div>
                 <div className={`w-full bg-slate-800 p-6 rounded-2xl border shadow-xl transition-colors duration-300 ${typoCount === 1 ? 'border-amber-500/80' : typoCount >= 2 ? 'border-red-500/80' : 'border-slate-700'}`}>
                   <form onSubmit={handleSpellingSubmit} className="space-y-4">
@@ -812,14 +1218,33 @@
                 <div className="p-4 flex-1 overflow-y-auto space-y-2">
                   {getDailyWords().baseWords.length === 0 ? <div className="text-center py-12 text-slate-500">此天數目前沒有單字。</div> :
                     getDailyWords().baseWords.map((word, idx) => (
-                      <div key={idx} className="flex items-center gap-3 p-3 bg-slate-900/50 rounded-xl border border-slate-700/60">
-                        <button onClick={() => speak(word.en)} className="p-2 bg-slate-800 text-indigo-400 rounded-lg border border-slate-700"><IconVolume /></button>
-                        <div>
-                          <div className="flex items-baseline gap-2">
-                            <span className="font-bold font-mono text-base text-slate-200">{word.en}</span>
-                            <span className="text-xs text-indigo-400 font-mono">({word.pos})</span>
+                      <div key={idx} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-xl border border-slate-700/60 gap-3 group">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <button onClick={() => speak(word.en)} className="p-2 bg-slate-800 text-indigo-400 rounded-lg border border-slate-700 flex-shrink-0"><IconVolume /></button>
+                          <div className="min-w-0">
+                            <div className="flex items-baseline gap-2">
+                              <span className="font-bold font-mono text-base text-slate-200 truncate">{word.en}</span>
+                              <span className="text-xs text-indigo-400 font-mono">({word.pos})</span>
+                            </div>
+                            <span className="text-sm text-slate-400 break-words">{word.zh}</span>
+                            {word.eg && <div className="text-xs text-slate-500 italic mt-1 font-sans break-words">{word.eg}</div>}
                           </div>
-                          <span className="text-sm text-slate-400">{word.zh}</span>
+                        </div>
+                        <div className="flex gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => startEditing(vocabList.findIndex(w => w.en.trim().toLowerCase() === word.en.trim().toLowerCase()))}
+                            className="p-1.5 bg-slate-800 text-indigo-400 hover:text-indigo-300 rounded border border-slate-700 text-xs"
+                            title="編輯"
+                          >
+                            ✏️
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteWord(vocabList.findIndex(w => w.en.trim().toLowerCase() === word.en.trim().toLowerCase()))}
+                            className="p-1.5 bg-slate-800 text-rose-400 hover:text-rose-300 rounded border border-slate-700 text-xs"
+                            title="刪除"
+                          >
+                            🗑️
+                          </button>
                         </div>
                       </div>
                     ))
@@ -856,6 +1281,7 @@
                                 <span className="text-xs text-indigo-400 font-mono">({item.data.pos})</span>
                               </div>
                               <span className="text-sm text-slate-400">{item.data.zh}</span>
+                              {item.data.eg && <div className="text-xs text-slate-500 italic mt-1 font-sans">{item.data.eg}</div>}
                             </div>
                           </div>
                           <div className="flex flex-col gap-1 w-full sm:w-40 flex-shrink-0">
@@ -901,6 +1327,7 @@
                                 <span className="text-xs text-indigo-400 font-mono">({item.data.pos})</span>
                               </div>
                               <span className="text-sm text-slate-400">{item.data.zh}</span>
+                              {item.data.eg && <div className="text-xs text-slate-500 italic mt-1 font-sans">{item.data.eg}</div>}
                             </div>
                           </div>
                           <div className="flex flex-col gap-1 w-full sm:w-48 flex-shrink-0 text-right">
@@ -916,6 +1343,403 @@
                     })
                   }
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* --- 查字典與手動加字 Modal --- */}
+          {showDictModal && (
+            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-[fadeIn_0.2s_ease-in-out]">
+              <div className="bg-slate-800 w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh] border border-slate-700">
+                {/* Header */}
+                <div className="p-6 border-b border-slate-700 flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-100">📖 查字典與手動加字</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">查詢線上字典並新增單字至目前字庫：{dbName}</p>
+                  </div>
+                  <button onClick={() => setShowDictModal(false)} className="p-2 text-slate-400 hover:text-slate-200 bg-slate-700 rounded-full">✕</button>
+                </div>
+                
+                {/* Body */}
+                <div className="p-6 flex-1 overflow-y-auto space-y-6">
+                  {/* Search bar */}
+                  <form onSubmit={handleSearch} className="flex gap-2">
+                    <input 
+                      type="text" 
+                      value={searchQuery} 
+                      onChange={(e) => setSearchQuery(e.target.value)} 
+                      placeholder="請輸入英文單字進行查詢..."
+                      className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 font-mono text-indigo-300"
+                    />
+                    <button 
+                      type="submit" 
+                      disabled={searchLoading}
+                      className="px-6 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold disabled:opacity-50 transition-colors"
+                    >
+                      {searchLoading ? '查詢中...' : '查詢'}
+                    </button>
+                  </form>
+                  
+                  {/* Loading/Error/Matches */}
+                  {searchLoading && (
+                    <div className="text-center py-8 text-indigo-400 flex flex-col items-center gap-2">
+                      <svg className="animate-spin h-8 w-8 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                      <span className="text-sm font-medium">正在取得線上釋義與翻譯...</span>
+                    </div>
+                  )}
+                  
+                  {searchError && (
+                    <div className="bg-slate-900/50 border border-slate-700/60 p-4 rounded-xl text-center space-y-2">
+                      <p className="text-sm text-slate-400">{searchError}</p>
+                      <a 
+                        href={`https://dictionary.cambridge.org/dictionary/english-chinese-traditional/${encodeURIComponent(searchQuery || '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block px-4 py-2 bg-slate-700 hover:bg-slate-600 text-xs text-indigo-300 hover:text-indigo-200 rounded-lg transition-colors font-medium"
+                      >
+                        🌐 開啟劍橋辭典網頁版查詢
+                      </a>
+                    </div>
+                  )}
+                  
+                  {localMatches.length > 0 && (
+                    <div className="bg-amber-950/20 border border-amber-500/30 p-3 rounded-xl space-y-1">
+                      <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">⚠️ 本地已存在檢查警告：</span>
+                      {localMatches.map((m, i) => (
+                        <div key={i} className="text-xs text-slate-400 font-mono pl-5">
+                          單字 <span className="text-amber-200 font-bold">{m.word.en}</span> 已存在於字庫 <span className="text-indigo-400 font-bold">[{m.db}]</span> 中（第 {m.day} 天，詞性: {m.word.pos}，中文: {m.word.zh}）。
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Results List */}
+                  {dictResults.length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-bold text-indigo-400 uppercase tracking-wider">線上字典與翻譯查詢結果 ({dictResults.length})</h4>
+                      <div className="grid grid-cols-1 gap-3 max-h-[260px] overflow-y-auto pr-1">
+                        {dictResults.map((item, idx) => (
+                          <div key={idx} className="bg-slate-900/40 border border-slate-700/50 p-4 rounded-xl flex justify-between items-start gap-4 hover:border-indigo-500/40 transition-colors">
+                            <div className="space-y-1.5 flex-1 min-w-0">
+                              <div className="flex items-baseline gap-2">
+                                <span className="font-bold font-mono text-base text-slate-200">{item.word}</span>
+                                <span className="text-xs text-indigo-400 font-mono">({item.pos})</span>
+                              </div>
+                              {item.enDef && (
+                                <p className="text-xs text-slate-400 italic break-words">Definition: {item.enDef}</p>
+                              )}
+                              <p className="text-sm font-semibold text-indigo-300 break-words">中文預填: {item.zh}</p>
+                              {item.eg && (
+                                <p className="text-xs text-slate-500 italic break-words border-l-2 border-slate-700 pl-2 mt-1">
+                                  {item.eg}
+                                </p>
+                              )}
+                            </div>
+                            <button 
+                              onClick={() => {
+                                setFormEn(item.word);
+                                setFormPos(item.pos);
+                                setFormZh(item.zh);
+                                setFormEg(item.eg);
+                              }}
+                              className="py-1.5 px-3 bg-indigo-950/60 hover:bg-indigo-900 border border-indigo-500/40 text-xs font-bold text-indigo-300 rounded-lg hover:text-indigo-200 transition-colors flex-shrink-0"
+                            >
+                              帶入此定義
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="h-px bg-slate-700/50"></div>
+                  
+                  {/* Form */}
+                  <div className="space-y-4">
+                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">手動填寫/修改單字表單</h4>
+                    <form onSubmit={handleAddWord} className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-slate-400 font-medium">英文單字 <span className="text-rose-500">*</span></label>
+                          <input 
+                            type="text" 
+                            required
+                            value={formEn}
+                            onChange={(e) => setFormEn(e.target.value.trim())}
+                            placeholder="例如: challenge"
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-mono text-slate-200"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-slate-400 font-medium">詞性 (pos) <span className="text-rose-500">*</span></label>
+                          <div className="flex gap-1.5">
+                            <select 
+                              value={['n.', 'v.', 'adj.', 'adv.', 'prep.', 'conj.', 'pron.', 'art.', 'idiom'].includes(formPos) ? formPos : 'custom'} 
+                              onChange={(e) => {
+                                if (e.target.value !== 'custom') setFormPos(e.target.value);
+                              }}
+                              className="bg-slate-900 border border-slate-700 rounded-xl px-2 py-2 text-sm focus:outline-none focus:border-indigo-500 text-slate-200"
+                            >
+                              <option value="n.">n. 名詞</option>
+                              <option value="v.">v. 動詞</option>
+                              <option value="adj.">adj. 形容詞</option>
+                              <option value="adv.">adv. 副詞</option>
+                              <option value="prep.">prep. 介係詞</option>
+                              <option value="conj.">conj. 連接詞</option>
+                              <option value="pron.">pron. 代名詞</option>
+                              <option value="art.">art. 冠詞</option>
+                              <option value="idiom">idiom 片語</option>
+                              <option value="custom">自訂...</option>
+                            </select>
+                            <input 
+                              type="text" 
+                              required
+                              value={formPos}
+                              onChange={(e) => setFormPos(e.target.value)}
+                              placeholder="詞性"
+                              className="w-20 bg-slate-900 border border-slate-700 rounded-xl px-2 py-2 text-sm focus:outline-none focus:border-indigo-500 font-mono text-slate-200 text-center"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-slate-400 font-medium">中文解釋 <span className="text-rose-500">*</span></label>
+                          <input 
+                            type="text" 
+                            required
+                            value={formZh}
+                            onChange={(e) => setFormZh(e.target.value)}
+                            placeholder="例如: 挑戰，難題"
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 text-slate-200"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-1.5">
+                        <label className="text-xs text-slate-400 font-medium">最常使用的例句 (選填，格式：English (中文翻譯))</label>
+                        <textarea 
+                          rows="2"
+                          value={formEg}
+                          onChange={(e) => setFormEg(e.target.value)}
+                          placeholder="例如: It is a big challenge. (這是一個巨大的挑戰。)"
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-sans text-slate-200"
+                        />
+                      </div>
+                      
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pt-2">
+                        <div className="flex items-center gap-4">
+                          <span className="text-xs font-bold text-slate-400">新增位置：</span>
+                          <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+                            <input 
+                              type="radio" 
+                              name="insertPosition" 
+                              value="current" 
+                              checked={insertPosition === 'current'}
+                              onChange={() => setInsertPosition('current')}
+                              className="accent-indigo-500"
+                            />
+                            目前天數 (第 {currentDay} 天)
+                          </label>
+                          <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+                            <input 
+                              type="radio" 
+                              name="insertPosition" 
+                              value="end" 
+                              checked={insertPosition === 'end'}
+                              onChange={() => setInsertPosition('end')}
+                              className="accent-indigo-500"
+                            />
+                            字庫最末端
+                          </label>
+                        </div>
+                        
+                        <button 
+                          type="submit"
+                          className="w-full sm:w-auto py-2.5 px-8 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold shadow-md transition-colors"
+                        >
+                          新增單字
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* --- 全字庫單字預覽 Modal --- */}
+          {showAllPreviewModal && (
+            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-[fadeIn_0.2s_ease-in-out]">
+              <div className="bg-slate-800 w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[85vh] border border-slate-700">
+                {/* Header */}
+                <div className="p-6 border-b border-slate-700 flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-100">🗂️ 全字庫單字預覽</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">目前字庫：{dbName} • 總共 {vocabList.length} 個單字</p>
+                  </div>
+                  <button onClick={() => setShowAllPreviewModal(false)} className="p-2 text-slate-400 hover:text-slate-200 bg-slate-700 rounded-full">✕</button>
+                </div>
+
+                {/* Filter and Search */}
+                <div className="p-4 border-b border-slate-700/50 flex gap-2">
+                  <input 
+                    type="text" 
+                    value={allSearchQuery}
+                    onChange={(e) => { setAllSearchQuery(e.target.value); setAllPage(1); }}
+                    placeholder="輸入關鍵字篩選單字、詞性或釋義..."
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xs focus:outline-none focus:border-indigo-500 font-mono text-indigo-300"
+                  />
+                </div>
+
+                {/* List Container */}
+                <div className="p-4 flex-1 overflow-y-auto space-y-2 font-sans">
+                  {(() => {
+                    const filtered = getFilteredVocab();
+                    if (filtered.length === 0) {
+                      return <div className="text-center py-12 text-slate-500">無符合篩選條件的單字。</div>;
+                    }
+                    const totalPages = Math.ceil(filtered.length / itemsPerPage);
+                    const currentPage = Math.min(allPage, totalPages);
+                    const startIndex = (currentPage - 1) * itemsPerPage;
+                    const paginated = filtered.slice(startIndex, startIndex + itemsPerPage);
+
+                    return (
+                      <>
+                        <div className="space-y-2">
+                          {paginated.map((word) => (
+                            <div key={word.originalIdx} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-xl border border-slate-700/60 gap-3 group">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <button onClick={() => speak(word.en)} className="p-2 bg-slate-800 text-indigo-400 rounded-lg border border-slate-700 flex-shrink-0"><IconVolume /></button>
+                                <div className="min-w-0">
+                                  <div className="flex items-baseline gap-2">
+                                    <span className="font-bold font-mono text-base text-slate-200 truncate">{word.en}</span>
+                                    <span className="text-xs text-indigo-400 font-mono">({word.pos})</span>
+                                    <span className="text-[10px] text-slate-500">#{word.originalIdx + 1}</span>
+                                  </div>
+                                  <span className="text-sm text-slate-400 break-words">{word.zh}</span>
+                                  {word.eg && <div className="text-xs text-slate-500 italic mt-1 font-sans break-words">{word.eg}</div>}
+                                </div>
+                              </div>
+                              <div className="flex gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                                <button 
+                                  onClick={() => startEditing(word.originalIdx)}
+                                  className="p-1.5 bg-slate-800 text-indigo-400 hover:text-indigo-300 rounded border border-slate-700 text-xs"
+                                  title="編輯"
+                                >
+                                  ✏️
+                                </button>
+                                <button 
+                                  onClick={() => handleDeleteWord(word.originalIdx)}
+                                  className="p-1.5 bg-slate-800 text-rose-400 hover:text-rose-300 rounded border border-slate-700 text-xs"
+                                  title="刪除"
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Pagination Navigation */}
+                        {totalPages > 1 && (
+                          <div className="flex justify-between items-center pt-4 text-xs font-mono">
+                            <button 
+                              disabled={currentPage === 1}
+                              onClick={() => setAllPage(p => Math.max(1, p - 1))}
+                              className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 rounded"
+                            >
+                              ◀ 上一頁
+                            </button>
+                            <span className="text-slate-400 font-sans">第 {currentPage} / {totalPages} 頁 (共 {filtered.length} 字)</span>
+                            <button 
+                              disabled={currentPage === totalPages}
+                              onClick={() => setAllPage(p => Math.min(totalPages, p + 1))}
+                              className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 rounded"
+                            >
+                              下一頁 ▶
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* --- 編輯單字 Modal --- */}
+          {editingIndex !== -1 && (
+            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[60] animate-[fadeIn_0.2s_ease-in-out]">
+              <div className="bg-slate-800 w-full max-w-lg rounded-3xl shadow-2xl flex flex-col border border-slate-700">
+                <div className="p-6 border-b border-slate-700 flex justify-between items-center">
+                  <h3 className="text-xl font-bold text-indigo-400">✏️ 編輯單字資訊</h3>
+                  <button onClick={() => setEditingIndex(-1)} className="p-2 text-slate-400 hover:text-slate-200 bg-slate-700 rounded-full">✕</button>
+                </div>
+                <form onSubmit={handleSaveEdit} className="p-6 space-y-4 font-sans">
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-400 font-medium">英文單字 *</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={editEn}
+                      onChange={(e) => setEditEn(e.target.value.trim())}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-mono text-slate-200"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-400 font-medium">詞性 (pos) *</label>
+                    <div className="flex gap-1.5">
+                      <select 
+                        value={['n.', 'v.', 'adj.', 'adv.', 'prep.', 'conj.', 'pron.', 'art.', 'idiom'].includes(editPos) ? editPos : 'custom'} 
+                        onChange={(e) => {
+                          if (e.target.value !== 'custom') setEditPos(e.target.value);
+                        }}
+                        className="bg-slate-900 border border-slate-700 rounded-xl px-2 py-2 text-sm focus:outline-none focus:border-indigo-500 text-slate-200"
+                      >
+                        <option value="n.">n. 名詞</option>
+                        <option value="v.">v. 動詞</option>
+                        <option value="adj.">adj. 形容詞</option>
+                        <option value="adv.">adv. 副詞</option>
+                        <option value="prep.">prep. 介係詞</option>
+                        <option value="conj.">conj. 連接詞</option>
+                        <option value="pron.">pron. 代名詞</option>
+                        <option value="art.">art. 冠詞</option>
+                        <option value="idiom">idiom 片語</option>
+                        <option value="custom">自訂...</option>
+                      </select>
+                      <input 
+                        type="text" 
+                        required
+                        value={editPos}
+                        onChange={(e) => setEditPos(e.target.value)}
+                        className="w-24 bg-slate-900 border border-slate-700 rounded-xl px-2 py-2 text-sm focus:outline-none focus:border-indigo-500 font-mono text-slate-200 text-center"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-400 font-medium">中文解釋 *</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={editZh}
+                      onChange={(e) => setEditZh(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 text-slate-200"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-400 font-medium">例句 (格式：English (中文翻譯))</label>
+                    <textarea 
+                      rows="2"
+                      value={editEg}
+                      onChange={(e) => setEditEg(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-sans text-slate-200"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-3 pt-2">
+                    <button type="button" onClick={() => setEditingIndex(-1)} className="px-5 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-xl text-sm font-bold transition-colors">取消</button>
+                    <button type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold transition-colors shadow-md">儲存修改</button>
+                  </div>
+                </form>
               </div>
             </div>
           )}
