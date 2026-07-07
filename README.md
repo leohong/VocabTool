@@ -1,4 +1,4 @@
-﻿# 🧠 極限單字特訓系統
+# 🧠 極限單字特訓系統
 
 > 一款基於「主動回想」、「動態錯題懲罰」與「間隔重複」的純前端單字記憶 Web 應用程式。
 
@@ -48,7 +48,7 @@
 
 本系統為單一 HTML 檔案架構 (Single File Application)，依賴 CDN 載入 React 與 Tailwind CSS，**無需任何安裝或建置步驟**。
 
-1.  將本專案 clone 到本地端，或直接下載 `單字極限特訓系統.html`。
+1.  將本專案 clone 到本地端，或直接下載 `index.html`。
 2.  在任何現代瀏覽器（Chrome, Edge, Safari, Firefox）中直接雙擊點開該 HTML 檔案。
 3.  開始你的極限特訓！
 
