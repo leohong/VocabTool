@@ -85,6 +85,10 @@
       const [vocabList, setVocabList] = useState(rawVocab);
       const [wordsPerDay, setWordsPerDay] = useState(50);
       const [ghostsPerDay, setGhostsPerDay] = useState(10); // 自訂每日幽靈數
+      const [speechRate, setSpeechRate] = useState(() => {
+        const saved = localStorage.getItem('vocab_speechRate');
+        return saved ? parseFloat(saved) : 0.8;
+      });
 
       const [view, setView] = useState('dashboard');
       const [showMistakeModal, setShowMistakeModal] = useState(false);
@@ -473,6 +477,10 @@
         if (dbName) localStorage.setItem(`vocab_ghostsPerDay_${dbName}`, ghostsPerDay);
       }, [ghostsPerDay, dbName]);
 
+      useEffect(() => {
+        localStorage.setItem('vocab_speechRate', speechRate.toString());
+      }, [speechRate]);
+
       // 自動暫存
       useEffect(() => {
         if (view !== 'dashboard' && view !== 'summary') {
@@ -489,7 +497,7 @@
           window.speechSynthesis.cancel();
           const utterance = new SpeechSynthesisUtterance(text);
           utterance.lang = 'en-US';
-          utterance.rate = 0.8;
+          utterance.rate = speechRate;
           window.speechSynthesis.speak(utterance);
         }
       };
@@ -1041,6 +1049,29 @@
                     <div className="flex justify-between items-center gap-2 border-l border-slate-700 pl-4">
                       <span className="text-xs font-bold text-slate-400">👻 每日幽靈:</span>
                       <input type="number" min="0" max="100" value={ghostsPerDay} onChange={(e) => setGhostsPerDay(Math.max(0, parseInt(e.target.value, 10) || 0))} className="w-16 bg-slate-900 border border-slate-700 rounded-md py-1 px-1 text-xs text-center focus:outline-none focus:border-indigo-500 font-mono text-amber-300" />
+                    </div>
+                  </div>
+                  <div className="h-px bg-slate-700/50 my-1"></div>
+                  <div className="flex justify-between items-center gap-2">
+                    <span className="text-xs font-bold text-slate-400 flex items-center gap-1">🔊 語音速度 (0.2 ~ 1.2):</span>
+                    <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-lg p-0.5 font-mono text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setSpeechRate(r => Math.max(0.2, Math.round((r - 0.1) * 10) / 10))}
+                        disabled={speechRate <= 0.2}
+                        className="w-6 h-6 flex items-center justify-center bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 rounded-md text-slate-300 font-bold transition-colors select-none"
+                      >
+                        -
+                      </button>
+                      <span className="w-8 text-center font-bold text-indigo-400">{speechRate.toFixed(1)}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSpeechRate(r => Math.min(1.2, Math.round((r + 0.1) * 10) / 10))}
+                        disabled={speechRate >= 1.2}
+                        className="w-6 h-6 flex items-center justify-center bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 rounded-md text-slate-300 font-bold transition-colors select-none"
+                      >
+                        +
+                      </button>
                     </div>
                   </div>
                 </div>
