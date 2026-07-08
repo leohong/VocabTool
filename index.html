@@ -1424,8 +1424,16 @@
                         {dictResults.map((item, idx) => (
                           <div key={idx} className="bg-slate-900/40 border border-slate-700/50 p-4 rounded-xl flex justify-between items-start gap-4 hover:border-indigo-500/40 transition-colors">
                             <div className="space-y-1.5 flex-1 min-w-0">
-                              <div className="flex items-baseline gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-bold font-mono text-base text-slate-200">{item.word}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => speak(item.word)}
+                                  className="p-1 bg-slate-800 hover:bg-slate-700 text-indigo-400 hover:text-indigo-300 rounded-lg transition-colors text-xs flex items-center gap-1 shrink-0"
+                                  title="發音"
+                                >
+                                  🔊
+                                </button>
                                 <span className="text-xs text-indigo-400 font-mono">({item.pos})</span>
                               </div>
                               {item.enDef && (
@@ -1463,7 +1471,19 @@
                     <form onSubmit={handleAddWord} className="space-y-4">
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div className="space-y-1.5">
-                          <label className="text-xs text-slate-400 font-medium">英文單字 <span className="text-rose-500">*</span></label>
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs text-slate-400 font-medium">英文單字 <span className="text-rose-500">*</span></label>
+                            {formEn && (
+                              <button
+                                type="button"
+                                onClick={() => speak(formEn)}
+                                className="text-indigo-400 hover:text-indigo-300 text-[10px] font-bold flex items-center gap-0.5"
+                                title="發音"
+                              >
+                                🔊 聽發音
+                              </button>
+                            )}
+                          </div>
                           <input
                             type="text"
                             required
@@ -1680,7 +1700,19 @@
                 </div>
                 <form onSubmit={handleSaveEdit} className="p-6 space-y-4 font-sans">
                   <div className="space-y-1.5">
-                    <label className="text-xs text-slate-400 font-medium">英文單字 *</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs text-slate-400 font-medium">英文單字 *</label>
+                      {editEn && (
+                        <button
+                          type="button"
+                          onClick={() => speak(editEn)}
+                          className="text-indigo-400 hover:text-indigo-300 text-[10px] font-bold flex items-center gap-0.5"
+                          title="發音"
+                        >
+                          🔊 聽發音
+                        </button>
+                      )}
+                    </div>
                     <input
                       type="text"
                       required
