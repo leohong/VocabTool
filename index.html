@@ -1366,18 +1366,30 @@
                 {/* Body */}
                 <div className="p-6 flex-1 overflow-y-auto space-y-6">
                   {/* Search bar */}
-                  <form onSubmit={handleSearch} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="請輸入英文單字進行查詢..."
-                      className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 font-mono text-indigo-300"
-                    />
+                  <form onSubmit={handleSearch} className="flex gap-2 w-full">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="請輸入英文單字進行查詢..."
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:border-indigo-500 font-mono text-indigo-300"
+                      />
+                      {searchQuery.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => speak(searchQuery.trim())}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 p-1 bg-slate-800 hover:bg-slate-700 text-indigo-400 hover:text-indigo-300 rounded-lg transition-colors text-sm"
+                          title="直接發音"
+                        >
+                          🔊
+                        </button>
+                      )}
+                    </div>
                     <button
                       type="submit"
                       disabled={searchLoading}
-                      className="px-6 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold disabled:opacity-50 transition-colors"
+                      className="px-6 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold disabled:opacity-50 transition-colors shrink-0"
                     >
                       {searchLoading ? '查詢中...' : '查詢'}
                     </button>
