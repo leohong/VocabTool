@@ -1010,6 +1010,10 @@
                   <button onClick={() => setShowPreviewModal(true)} className="text-indigo-400 hover:text-indigo-300 underline py-1 transition-colors">
                     🔍 預覽單字 ({getDailyWords().baseWords.length} 字)
                   </button>
+                  {/* --- 這裡是你新增的預覽錯題按鈕 --- */}
+                  <button onClick={() => setShowMistakeModal(true)} className="text-indigo-400 hover:text-indigo-300 underline py-1 transition-colors">
+                    ⚠️ 預覽錯題 ({activeMistakesList.length} 字)
+                  </button>
                   <span className="text-slate-600">|</span>
                   <button onClick={() => { setShowAllPreviewModal(true); setAllSearchQuery(''); setAllPage(1); }} className="text-indigo-400 hover:text-indigo-300 underline py-1 transition-colors">
                     🗂️ 預覽字庫 ({vocabList.length} 字)
