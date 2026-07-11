@@ -1053,53 +1053,86 @@
         downloadFile(`字典_${dbName}.txt`, content, 'text/plain');
       };
 
-      const exportMistakesTXT = () => {
-        if (activeMistakesList.length === 0) return alert("錯題庫為空，無需匯出。");
-        let content = `=== 核心錯題本個人紀錄 ===\n\n`;
-        activeMistakesList.forEach((m, idx) => { content += `${idx + 1}. 錯誤次數: ${m.mistakesCount}次 | [${m.data.pos}] ${m.data.en} --> ${m.data.zh}\n`; });
-        downloadFile(`當前錯題本_${dbName}.txt`, content, 'text/plain');
+      const exportHistoryTXT = () => {
+        const historyList = Object.values(state.historicalMistakes);
+        if (historyList.length === 0) return alert("歷史殿堂目前空空如也，無需匯出。");
+        let content = `=== 歷史殿堂單字個人紀錄 ===\n\n`;
+        historyList.forEach((m, idx) => {
+          content += `${idx + 1}. 錯誤次數: ${m.mistakesCount}次 | [${m.data.pos}] ${m.data.en} --> ${m.data.zh}\n`;
+        });
+        downloadFile(`歷史殿堂_${dbName}.txt`, content, 'text/plain');
       };
 
-      const handleImportTXT = (e, isMistakes) => {
+      const handleImportHistoryTXT = (e) => {
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
         reader.onload = (event) => {
           const text = event.target.result;
-          if (isMistakes && text.includes("核心錯題本個人紀錄")) {
+          if (text.includes("歷史殿堂單字個人紀錄")) {
             const lines = text.split("\n");
+            const importedVocab = [];
+            const importedHistory = {};
             let count = 0;
 
-            // TXT 智慧分流
-            const toHistory = window.confirm("💡 系統詢問：\n\n您希望將這批錯題直接放進【🏛️ 歷史殿堂】進行未來的間隔突襲嗎？\n\n▶ 按「確定」：匯入歷史殿堂 (適合已背過的舊錯題)\n▶ 按「取消」：匯入當前錯題庫 (需重新進行雙倍消除)");
-
-            setState(prev => {
-              const newMistakes = { ...prev.mistakes };
-              const newHistory = { ...prev.historicalMistakes };
-
-              lines.forEach(line => {
-                const match = line.match(/錯誤(?:次數)?[:\s]*(\d+)次\s*\|\s*\[(.*?)\]\s*(.+?)\s*-->\s*(.*)/);
-                if (match) {
-                  const [_, mistakesCount, pos, en, zh] = match;
-                  const wordKey = en.trim();
-                  const mCount = parseInt(mistakesCount, 10);
-                  if (toHistory) {
-                    newHistory[wordKey] = {
-                      mistakesCount: mCount, totalFails: mCount, archivedDate: Date.now(),
-                      step: 0, interval: 7, immune: false, data: { en: wordKey, zh: zh.trim(), pos: pos.trim() }
-                    };
-                  } else {
-                    newMistakes[wordKey] = { mistakesCount: mCount, correctCount: 0, data: { en: wordKey, zh: zh.trim(), pos: pos.trim() } };
-                  }
-                  count++;
-                }
-              });
-              return { ...prev, mistakes: newMistakes, historicalMistakes: newHistory };
+            lines.forEach(line => {
+              const match = line.match(/錯誤(?:次數)?[:\s]*(\d+)次\s*\|\s*\[(.*?)\]\s*(.+?)\s*-->\s*(.*)/);
+              if (match) {
+                const [_, mistakesCount, pos, en, zh] = match;
+                const wordKey = en.trim();
+                const mCount = parseInt(mistakesCount, 10);
+                const wordObj = { en: wordKey, zh: zh.trim(), pos: pos.trim() };
+                
+                importedVocab.push(wordObj);
+                importedHistory[wordKey] = {
+                  mistakesCount: mCount,
+                  totalFails: mCount,
+                  archivedDate: Date.now(),
+                  step: 0,
+                  interval: 7,
+                  immune: false,
+                  data: wordObj
+                };
+                count++;
+              }
             });
-            if (toHistory) alert(`成功將 ${count} 字導入【🏛️ 歷史殿堂】！\n系統將在 7 天後開始安插第一波幽靈突襲。`);
-            else alert(`成功將 ${count} 字導入【🔥 當前錯題集中營】！`);
 
-          } else if (!isMistakes && text.includes("特訓完整字庫")) {
+            if (count === 0) {
+              alert("未偵測到任何有效的歷史殿堂單字格式。");
+              return;
+            }
+
+            const importAsNewDB = window.confirm(
+              `偵測到「歷史殿堂字庫檔案」（共 ${count} 字）。\n\n請問您是否要將這些單字轉為目前字庫【${dbName}】的「全新單字庫」，重新開始練習？\n\n▶ 按【確定】：覆寫目前字庫，並將學習進度「完全重設」，重新背這批單字。\n▶ 按【取消】：僅匯入作為目前的「歷史殿堂」紀錄 (供幽靈突襲用)。`
+            );
+
+            if (importAsNewDB) {
+              setVocabList(importedVocab);
+              localStorage.setItem(`vocab_customVocab_${dbName}`, JSON.stringify(importedVocab));
+              setState(defaultState);
+              alert(`成功將歷史殿堂單字轉為全新字庫！已載入 ${importedVocab.length} 個單字，進度已重設，可以重新開始特訓囉！`);
+            } else {
+              setState(prev => {
+                const newHistory = { ...prev.historicalMistakes, ...importedHistory };
+                return { ...prev, historicalMistakes: newHistory };
+              });
+              alert(`成功匯入 ${count} 個單字至目前的【🏛️ 歷史殿堂】中！`);
+            }
+          } else {
+            alert("檔案格式不符，請確認是正確的歷史殿堂備份 TXT 檔案。");
+          }
+        };
+        reader.readAsText(file);
+        e.target.value = "";
+      };
+
+      const handleImportTXT = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const text = event.target.result;
+          if (text.includes("特訓完整字庫")) {
             const lines = text.split("\n");
             const importedVocab = [];
             lines.forEach(line => {
@@ -1111,7 +1144,7 @@
               localStorage.setItem(`vocab_customVocab_${dbName}`, JSON.stringify(importedVocab));
               alert(`字典匯入成功！共 ${importedVocab.length} 字。`);
             }
-          } else { alert("無法識別檔案格式。"); }
+          } else { alert("無法識別檔案格式，請確認是正確的字庫備份 TXT 檔案。"); }
         };
         reader.readAsText(file);
         e.target.value = "";
@@ -1290,11 +1323,11 @@
                   <div className="grid grid-cols-3 gap-2">
                     <div className="flex gap-1">
                       <button onClick={exportDictionaryTXT} className="flex-1 py-1.5 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600 transition-colors" title="匯出字典">⬇️ 字</button>
-                      <label className="flex-1 py-1.5 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600 transition-colors cursor-pointer text-center" title="匯入字典">⬆️ 字<input type="file" accept=".txt" onChange={(e) => handleImportTXT(e, false)} className="hidden" /></label>
+                      <label className="flex-1 py-1.5 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600 transition-colors cursor-pointer text-center" title="匯入字典">⬆️ 字<input type="file" accept=".txt" onChange={handleImportTXT} className="hidden" /></label>
                     </div>
                     <div className="flex gap-1">
-                      <button onClick={exportMistakesTXT} className="flex-1 py-1.5 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600 transition-colors" title="匯出錯題">⬇️ 錯</button>
-                      <label className="flex-1 py-1.5 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600 transition-colors cursor-pointer text-center" title="匯入錯題">⬆️ 錯<input type="file" accept=".txt" onChange={(e) => handleImportTXT(e, true)} className="hidden" /></label>
+                      <button onClick={exportHistoryTXT} className="flex-1 py-1.5 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600 transition-colors" title="匯出歷史殿堂">⬇️ 殿</button>
+                      <label className="flex-1 py-1.5 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600 transition-colors cursor-pointer text-center" title="匯入歷史殿堂/新字庫">⬆️ 殿<input type="file" accept=".txt" onChange={handleImportHistoryTXT} className="hidden" /></label>
                     </div>
                     <div className="flex gap-1">
                       <button onClick={exportJson} className="flex-1 py-1.5 bg-indigo-900/50 rounded text-xs text-indigo-300 hover:bg-indigo-800 transition-colors" title="JSON全匯出">⬇️ J</button>
