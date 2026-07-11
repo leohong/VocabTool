@@ -1068,7 +1068,7 @@
 
             {/* 標題獨立在最前面 (手機版佔用第一行) */}
             <h1 className="text-lg font-bold text-indigo-400 flex items-center gap-1.5 shrink-0">
-              <IconBook /> 極限特訓
+              <IconBook /> 極限特訓 <span className="text-[10px] text-slate-500 font-mono font-normal">v1.1</span>
               <a href="https://github.com/leohong/VocabTool/blob/main/README.md" target="_blank" rel="noopener noreferrer" className="ml-2 px-1.5 py-0.5 text-[10px] font-medium text-indigo-300 bg-indigo-950/50 hover:bg-indigo-900/60 border border-indigo-500/30 rounded-md transition-colors flex items-center gap-1">
                 📖 說明書
               </a>
@@ -1482,24 +1482,41 @@
                                 <div className="bg-emerald-500 h-2 transition-all duration-300" style={{ width: `${progress}%` }}></div>
                               </div>
                             </div>
-                            {vocabIndex !== -1 && (
-                              <div className="flex gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={() => startEditing(vocabIndex)}
-                                  className="p-1.5 bg-slate-800 text-indigo-400 hover:text-indigo-300 rounded border border-slate-700 text-xs"
-                                  title="編輯"
-                                >
-                                  ✏️
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteWord(vocabIndex)}
-                                  className="p-1.5 bg-slate-800 text-rose-400 hover:text-rose-300 rounded border border-slate-700 text-xs"
-                                  title="刪除"
-                                >
-                                  🗑️
-                                </button>
-                              </div>
-                            )}
+                            <div className="flex gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => {
+                                  if (vocabIndex !== -1) {
+                                    startEditing(vocabIndex);
+                                  } else {
+                                    alert('此單字不在目前字庫中，無法編輯。如需編輯，請先將此單字新增至字庫。');
+                                  }
+                                }}
+                                className={`p-1.5 rounded border text-xs transition-colors ${vocabIndex !== -1 ? 'bg-slate-800 text-indigo-400 hover:text-indigo-300 border-slate-700' : 'bg-slate-800/40 text-slate-600 border-slate-800/20 cursor-not-allowed'}`}
+                                title={vocabIndex !== -1 ? "編輯" : "此單字不在目前字庫中，無法編輯"}
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (vocabIndex !== -1) {
+                                    handleDeleteWord(vocabIndex);
+                                  } else {
+                                    if (window.confirm(`此單字已不在目前字庫中，確定要單獨將其從「當前錯題集中營」中移除嗎？`)) {
+                                      setState(prev => {
+                                        const nextState = { ...prev };
+                                        nextState.mistakes = { ...prev.mistakes };
+                                        delete nextState.mistakes[item.data.en];
+                                        return nextState;
+                                      });
+                                    }
+                                  }
+                                }}
+                                className="p-1.5 bg-slate-800 text-rose-400 hover:text-rose-300 rounded border border-slate-700 text-xs"
+                                title="刪除"
+                              >
+                                🗑️
+                              </button>
+                            </div>
                           </div>
                         </div>
                       )
