@@ -1919,7 +1919,7 @@
 
           {/* --- 編輯單字 Modal --- */}
           {editingIndex !== -1 && (
-            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[60] animate-[fadeIn_0.2s_ease-in-out]">
+            <div style={{ zIndex: 100 }} className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease-in-out]">
               <div className="bg-slate-800 w-full max-w-lg rounded-3xl shadow-2xl flex flex-col border border-slate-700">
                 <div className="p-6 border-b border-slate-700 flex justify-between items-center">
                   <h3 className="text-xl font-bold text-indigo-400">✏️ 編輯單字資訊</h3>
