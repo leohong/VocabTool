@@ -177,6 +177,7 @@
               setUserInput('');
               setTypoCount(0);
               setMustTypeCorrectly(false);
+              setCopyFailCount(0);
             }
           }
         }
@@ -464,6 +465,7 @@
       const [userInput, setUserInput] = useState('');
       const [typoCount, setTypoCount] = useState(0);
       const [mustTypeCorrectly, setMustTypeCorrectly] = useState(false);
+      const [copyFailCount, setCopyFailCount] = useState(0);
 
       const inputRef = useRef(null);
 
@@ -600,6 +602,7 @@
         setCurrentWord(shuffled[0]);
         setTypoCount(0);
         setMustTypeCorrectly(false);
+        setCopyFailCount(0);
         setUserInput('');
         setView('spelling');
       };
@@ -613,6 +616,7 @@
         setCurrentWord(shuffled[0]);
         setTypoCount(0);
         setMustTypeCorrectly(false);
+        setCopyFailCount(0);
         setUserInput('');
         setView('spelling');
       };
@@ -639,6 +643,7 @@
         speak(currentWord.en);
         setTypoCount(2);
         setMustTypeCorrectly(true);
+        setCopyFailCount(0);
         setUserInput('');
         if (!currentWord._hasCountedMistake) {
           currentWord._hasCountedMistake = true;
@@ -666,6 +671,7 @@
           setCurrentWord(currentSessionWords[0]);
           setTypoCount(0);
           setMustTypeCorrectly(false);
+          setCopyFailCount(0);
           setUserInput('');
           setView('spelling');
         } else {
@@ -705,10 +711,13 @@
       // 第二關：填空盲測
       const handleSpellingSubmit = (e) => {
         e.preventDefault();
-        const isCorrect = userInput.trim().toLowerCase() === currentWord.en.trim().toLowerCase();
+        const cleanInput = userInput.trim().toLowerCase().replace(/[’‘`′]/g, "'");
+        const cleanTarget = currentWord.en.trim().toLowerCase().replace(/[’‘`′]/g, "'");
+        const isCorrect = cleanInput === cleanTarget;
 
         if (isCorrect) {
           if (mustTypeCorrectly) {
+            setCopyFailCount(0);
             proceedToNext();
             return;
           }
@@ -757,16 +766,29 @@
           proceedToNext();
         } else {
           speak(currentWord.en);
-          if (typoCount === 0) {
-            setTypoCount(1);
-            setUserInput('');
+          if (mustTypeCorrectly) {
+            const nextCopyFail = copyFailCount + 1;
+            if (nextCopyFail >= 3) {
+              alert(`已連續輸入錯誤 ${nextCopyFail} 次，系統自動跳過此單字：${currentWord.en}`);
+              setCopyFailCount(0);
+              proceedToNext();
+            } else {
+              setCopyFailCount(nextCopyFail);
+              setUserInput('');
+            }
           } else {
-            setTypoCount(2);
-            setMustTypeCorrectly(true);
-            setUserInput('');
-            if (!currentWord._hasCountedMistake) {
-              currentWord._hasCountedMistake = true;
-              punishWord(currentWord);
+            if (typoCount === 0) {
+              setTypoCount(1);
+              setUserInput('');
+            } else {
+              setTypoCount(2);
+              setMustTypeCorrectly(true);
+              setCopyFailCount(0);
+              setUserInput('');
+              if (!currentWord._hasCountedMistake) {
+                currentWord._hasCountedMistake = true;
+                punishWord(currentWord);
+              }
             }
           }
         }
@@ -776,6 +798,7 @@
         const newQueue = queue.slice(1);
         setTypoCount(0);
         setMustTypeCorrectly(false);
+        setCopyFailCount(0);
         setUserInput('');
         if (newQueue.length === 0) {
           if (sessionType === 'daily') {
@@ -1266,7 +1289,11 @@
                     <div className="flex justify-between items-center min-h-[24px]">
                       <label className="text-sm text-slate-400 font-medium">請拼寫完整單字：</label>
                       {typoCount === 1 && !mustTypeCorrectly && <span className="text-xs font-bold text-amber-400 bg-amber-950/40 px-2 py-0.5 rounded border border-amber-900/60 animate-pulse">⚠️ 手滑警告！再錯將強迫重抄</span>}
-                      {mustTypeCorrectly && <span className="text-xs font-bold text-red-400 bg-red-950/40 px-2 py-0.5 rounded border border-red-900/60">❌ 失憶判定！連對進度歸零</span>}
+                      {mustTypeCorrectly && (
+                        <span className="text-xs font-bold text-red-400 bg-red-950/40 px-2 py-0.5 rounded border border-red-900/60 animate-pulse">
+                          ❌ 失憶判定！請重抄 (剩餘嘗試: {3 - copyFailCount} 次)
+                        </span>
+                      )}
                     </div>
 
                     {mustTypeCorrectly && (
@@ -1290,6 +1317,17 @@
                         </button>
                         <button type="button" onClick={handleForceMistake} className="text-xs text-slate-500 hover:text-amber-400 transition-colors flex items-center gap-1">
                           <span>🤔</span> 剛才是矇對的？加入錯題
+                        </button>
+                      </div>
+                    )}
+                    {mustTypeCorrectly && (
+                      <div className="flex justify-center mt-3">
+                        <button type="button" onClick={() => {
+                          if (window.confirm("確定要跳過這個單字的手寫複製嗎？")) {
+                            proceedToNext();
+                          }
+                        }} className="text-xs text-slate-500 hover:text-red-400 transition-colors flex items-center gap-1">
+                          <span>⏭️</span> 跳過親手輸入
                         </button>
                       </div>
                     )}
