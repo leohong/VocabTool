@@ -97,6 +97,7 @@
       // ----------------------------------------
       // --- 1. 狀態與資料庫管理 ---
       // ----------------------------------------
+      const [isInputFocused, setIsInputFocused] = useState(false);
       const [dbName, setDbName] = useState(() => localStorage.getItem('vocab_currentDB') || 'vocab_2000');
       const [dbList, setDbList] = useState(() => {
         const saved = localStorage.getItem('vocab_dbList');
@@ -1000,7 +1001,7 @@
       return (
         <div className="w-full flex flex-col">
 
-          <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 bg-slate-800 p-3 sm:p-4 rounded-xl shadow-md border border-slate-700 gap-3 sm:gap-4">
+          {!(view === 'spelling' && isInputFocused) && <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 bg-slate-800 p-3 sm:p-4 rounded-xl shadow-md border border-slate-700 gap-3 sm:gap-4">
 
             {/* 標題獨立在最前面 (手機版佔用第一行) */}
             <h1 className="text-lg font-bold text-indigo-400 flex items-center gap-1.5 shrink-0">
@@ -1035,7 +1036,7 @@
               </div>
 
             </div>
-          </header>
+          </header>}
 
           <main className="flex-1 flex flex-col justify-center items-center">
             {view === 'dashboard' && (
@@ -1224,7 +1225,7 @@
                   <div className="text-indigo-400 font-medium flex items-center gap-2"><span>✍️ 盲測輸出中 (剩 {queue.length} 字)</span></div>
                   <button onClick={handleExitSession} className="text-xs px-3 py-1.5 bg-slate-800 hover:bg-red-950/40 text-slate-400 hover:text-red-400 rounded-lg border border-slate-700 transition-colors">暫停存檔</button>
                 </div>
-                <div className="bg-slate-800 w-full rounded-3xl shadow-2xl border border-slate-700 p-8 mb-6 text-center relative">
+                <div className={`bg-slate-800 w-full rounded-3xl shadow-2xl border border-slate-700 text-center relative transition-all duration-200 ${isInputFocused ? 'p-4 mb-2' : 'p-8 mb-6'}`}>
                   <div className="absolute top-4 right-4 flex gap-2">
                     <button type="button" onClick={() => speak(currentWord.en)} className="p-2 bg-slate-700 hover:bg-indigo-900 text-slate-400 rounded-full transition-colors" title="播放發音"><IconVolume /></button>
                   </div>
@@ -1275,7 +1276,7 @@
                       </div>
                     )}
 
-                    <input type="text" ref={inputRef} value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder="在此輸入..." autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" className={`w-full py-4 px-6 bg-slate-900 border-2 rounded-xl text-xl font-bold font-mono text-center transition-colors tracking-widest focus:outline-none ${typoCount === 1 ? 'border-amber-500/50 text-amber-300' : mustTypeCorrectly ? 'border-emerald-500 text-emerald-300' : 'border-slate-700 text-indigo-300 focus:border-indigo-500'}`} />
+                    <input type="text" ref={inputRef} value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder="在此輸入..." autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" onFocus={() => setIsInputFocused(true)} onBlur={() => setIsInputFocused(false)} className={`w-full py-4 px-6 bg-slate-900 border-2 rounded-xl text-xl font-bold font-mono text-center transition-colors tracking-widest focus:outline-none ${typoCount === 1 ? 'border-amber-500/50 text-amber-300' : mustTypeCorrectly ? 'border-emerald-500 text-emerald-300' : 'border-slate-700 text-indigo-300 focus:border-indigo-500'}`} />
 
                     <button type="submit" className={`w-full py-3 font-bold rounded-xl transition-colors shadow-md text-white ${mustTypeCorrectly ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
                       {mustTypeCorrectly ? "已確實手寫記下 (Enter)" : "送出檢查 (Enter)"}
