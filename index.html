@@ -572,6 +572,7 @@
         }
       }, [queue, view, sessionType, dbName, currentSessionWords]);
 
+
       // --- 發音 ---
       const speak = (text) => {
         if ('speechSynthesis' in window) {
@@ -881,8 +882,40 @@
       };
 
       const exportJson = () => {
-        const backup = { dbName, state, vocabList, wordsPerDay, ghostsPerDay, exportDate: new Date().toISOString() };
-        downloadFile(`極限備份_${dbName}_${new Date().getTime()}.json`, JSON.stringify(backup, null, 2), 'application/json');
+        // 匯出所有的資料庫與設定值
+        const allDatabases = {};
+        dbList.forEach(db => {
+          const vocab = localStorage.getItem(`vocab_customVocab_${db}`);
+          const st = localStorage.getItem(`vocab_state_${db}`);
+          const wpd = localStorage.getItem(`vocab_wordsPerDay_${db}`);
+          const gpd = localStorage.getItem(`vocab_ghostsPerDay_${db}`);
+          allDatabases[db] = {
+            vocabList: vocab ? JSON.parse(vocab) : null,
+            state: st ? JSON.parse(st) : null,
+            wordsPerDay: wpd ? parseInt(wpd, 10) : null,
+            ghostsPerDay: gpd ? parseInt(gpd, 10) : null,
+          };
+        });
+
+        const backup = {
+          version: "2.0",
+          backupType: "full_system",
+          exportDate: new Date().toISOString(),
+          global: {
+            dbList,
+            currentDB: dbName,
+            speechRate
+          },
+          // 保持與舊版本的向後相容性
+          dbName,
+          state,
+          vocabList,
+          wordsPerDay,
+          ghostsPerDay,
+          allDatabases
+        };
+
+        downloadFile(`極限完整備份_${new Date().getTime()}.json`, JSON.stringify(backup, null, 2), 'application/json');
       };
 
       const handleImportJson = (e) => {
@@ -893,7 +926,7 @@
           try {
             const data = JSON.parse(event.target.result);
 
-            // 支援 B：純單字清單陣列 JSON 格式
+            // 支援 A：純單字清單陣列 JSON 格式
             if (Array.isArray(data)) {
               if (data.length > 0 && (data[0].en || data[0].word) && (data[0].zh || data[0].meaning)) {
                 if (window.confirm(`偵測到此檔案為「單字清單格式」（共 ${data.length} 字）。\n\n是否將其匯入為目前字庫【${dbName}】的完整字庫？\n(這將會覆蓋目前字庫的單字，但保留您的學習紀錄與錯題)`)) {
@@ -916,7 +949,63 @@
               }
             }
 
-            // 支援 C：標準系統備份格式
+            // 支援 B：全新完整系統備份格式 (v2.0)
+            if (data && data.backupType === "full_system" && data.allDatabases) {
+              if (window.confirm(`偵測到此檔案為「系統完整備份檔案」（包含全部 ${data.global?.dbList?.length || 0} 個字庫及其學習進度與設定）。\n\n注意：這將會完全覆蓋您目前瀏覽器的所有字庫與學習進度！\n確定要繼續還原嗎？`)) {
+                
+                // 1. 還原全域變數
+                const backupGlobal = data.global || {};
+                const importedDbList = backupGlobal.dbList || ['vocab_2000', 'vocab_7000'];
+                const importedCurrentDB = backupGlobal.currentDB || 'vocab_2000';
+                const importedSpeechRate = backupGlobal.speechRate || 0.8;
+
+                localStorage.setItem('vocab_dbList', JSON.stringify(importedDbList));
+                localStorage.setItem('vocab_currentDB', importedCurrentDB);
+                localStorage.setItem('vocab_speechRate', importedSpeechRate.toString());
+
+                // 2. 還原各資料庫
+                Object.keys(data.allDatabases).forEach(db => {
+                  const dbData = data.allDatabases[db];
+                  if (dbData.vocabList) {
+                    localStorage.setItem(`vocab_customVocab_${db}`, JSON.stringify(dbData.vocabList));
+                  }
+                  if (dbData.state) {
+                    localStorage.setItem(`vocab_state_${db}`, JSON.stringify(dbData.state));
+                  }
+                  if (dbData.wordsPerDay !== null && dbData.wordsPerDay !== undefined) {
+                    localStorage.setItem(`vocab_wordsPerDay_${db}`, dbData.wordsPerDay);
+                  }
+                  if (dbData.ghostsPerDay !== null && dbData.ghostsPerDay !== undefined) {
+                    localStorage.setItem(`vocab_ghostsPerDay_${db}`, dbData.ghostsPerDay);
+                  }
+                });
+
+                // 3. 更新 React 狀態
+                setDbList(importedDbList);
+                setSpeechRate(importedSpeechRate);
+                setDbName(importedCurrentDB);
+
+                // 如果導入的 dbName 剛好和目前的相同，我們手動更新狀態
+                if (dbName === importedCurrentDB) {
+                  const savedState = localStorage.getItem(`vocab_state_${importedCurrentDB}`);
+                  setState(savedState ? JSON.parse(savedState) : defaultState);
+                  
+                  const savedVocab = localStorage.getItem(`vocab_customVocab_${importedCurrentDB}`);
+                  setVocabList(savedVocab ? JSON.parse(savedVocab) : rawVocab);
+                  
+                  const savedWords = localStorage.getItem(`vocab_wordsPerDay_${importedCurrentDB}`);
+                  setWordsPerDay(savedWords ? parseInt(savedWords, 10) : 50);
+                  
+                  const savedGhosts = localStorage.getItem(`vocab_ghostsPerDay_${importedCurrentDB}`);
+                  setGhostsPerDay(savedGhosts ? parseInt(savedGhosts, 10) : 10);
+                }
+
+                alert(`系統完整還原成功！已成功載入 ${importedDbList.length} 個字庫，並切換至：${importedCurrentDB}`);
+                return;
+              }
+            }
+
+            // 支援 C：單一資料庫備份格式 (舊版 / 傳統格式)
             if (data && data.state) {
               const importedDbName = data.dbName || dbName || 'vocab_2000';
               let importedState = { ...defaultState, ...data.state };
@@ -944,11 +1033,11 @@
               setVocabList(data.vocabList || data.customVocab || rawVocab);
               setWordsPerDay(data.wordsPerDay || 50);
               setGhostsPerDay(data.ghostsPerDay || 10);
-              alert(`成功覆蓋還原！已切換至資料庫：${importedDbName}`);
+              alert(`成功覆蓋還原單一字庫！已切換至資料庫：${importedDbName}`);
               return;
             }
 
-            alert("JSON 格式不符。");
+            alert("JSON 格式不符，請確認是正確的備份檔案。");
           } catch (err) {
             console.error(err);
             alert("檔案解析失敗。");
