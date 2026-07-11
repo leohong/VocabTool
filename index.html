@@ -56,9 +56,41 @@
       const parts = eg.split(/\s*(\([^)]+\))\s*$/);
       const enPart = parts[0];
       const zhPart = parts[1] || '';
-      const regex = new RegExp('\\b' + word.trim() + '[a-zA-Z]*\\b', 'gi');
-      const maskedEn = enPart.replace(regex, '______');
+      
+      let maskedEn = enPart;
+      const w = word.trim();
+      const escaped = w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      
+      // 1. 直接比對更替目標單字 (及其複數/衍生詞字尾)
+      const regex1 = new RegExp('\\b' + escaped + '[a-zA-Z]*\\b', 'gi');
+      maskedEn = maskedEn.replace(regex1, '______');
+      
+      // 2. 針對拼寫變體進行相容性比對 (例如 acknowledgement <-> acknowledgment)
+      if (w.toLowerCase().includes('acknowledg')) {
+        maskedEn = maskedEn.replace(/\backnowledg(e)?ment(s)?\b/gi, '______');
+      } else if (w.toLowerCase().includes('judg')) {
+        maskedEn = maskedEn.replace(/\bjudg(e)?ment(s)?\b/gi, '______');
+      }
+      
       return zhPart ? `${maskedEn} ${zhPart}` : maskedEn;
+    };
+
+    const maskText = (text, word) => {
+      if (!text || !word) return '';
+      let maskedTextStr = text;
+      const w = word.trim();
+      const escaped = w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      
+      const regex1 = new RegExp('\\b' + escaped + '[a-zA-Z]*\\b', 'gi');
+      maskedTextStr = maskedTextStr.replace(regex1, '______');
+      
+      if (w.toLowerCase().includes('acknowledg')) {
+        maskedTextStr = maskedTextStr.replace(/\backnowledg(e)?ment(s)?\b/gi, '______');
+      } else if (w.toLowerCase().includes('judg')) {
+        maskedTextStr = maskedTextStr.replace(/\bjudg(e)?ment(s)?\b/gi, '______');
+      }
+      
+      return maskedTextStr;
     };
 
     function App() {
@@ -99,6 +131,8 @@
 
       // --- 字典與手動加字狀態 ---
       const [showDictModal, setShowDictModal] = useState(false);
+      const [isDictHintMode, setIsDictHintMode] = useState(false);
+      const [dictMaskWord, setDictMaskWord] = useState('');
       const [searchQuery, setSearchQuery] = useState('');
       const [searchLoading, setSearchLoading] = useState(false);
       const [searchError, setSearchError] = useState(null);
@@ -237,9 +271,8 @@
         }
       };
 
-      const handleSearch = async (e) => {
-        if (e) e.preventDefault();
-        const query = searchQuery.trim().toLowerCase();
+      const performSearch = async (queryStr) => {
+        const query = queryStr.trim().toLowerCase();
         if (!query) return;
 
         setSearchLoading(true);
@@ -270,7 +303,7 @@
           setFormZh(currentDbMatch.word.zh);
           setFormEg(currentDbMatch.word.eg || '');
         } else {
-          setFormEn(searchQuery.trim());
+          setFormEn(queryStr.trim());
           setFormPos('n.');
           setFormZh('');
           setFormEg('');
@@ -332,13 +365,13 @@
 
               // 智慧退路 2：若整個單字在 API 中完全無任何可用例句（如 algorithm），則使用其英文定義構造一條學術解釋型例句
               if (!chosenEgEn && def.definition) {
-                const cleanWord = searchQuery.trim();
+                const cleanWord = queryStr.trim();
                 const article = /^[aeiou]/i.test(cleanWord) ? 'An' : 'A';
                 chosenEgEn = `${article} ${cleanWord} is defined as: ${def.definition}`;
               }
 
               results.push({
-                word: searchQuery.trim(),
+                word: queryStr.trim(),
                 pos: pos,
                 enDef: def.definition,
                 egEn: chosenEgEn,
@@ -373,6 +406,11 @@
         } finally {
           setSearchLoading(false);
         }
+      };
+
+      const handleSearch = async (e) => {
+        if (e) e.preventDefault();
+        await performSearch(searchQuery);
       };
 
       const handleAddWord = (e) => {
@@ -790,53 +828,67 @@
         reader.onload = (event) => {
           try {
             const data = JSON.parse(event.target.result);
-            if (data.dbName && data.state) {
 
+            // 支援 B：純單字清單陣列 JSON 格式
+            if (Array.isArray(data)) {
+              if (data.length > 0 && (data[0].en || data[0].word) && (data[0].zh || data[0].meaning)) {
+                if (window.confirm(`偵測到此檔案為「單字清單格式」（共 ${data.length} 字）。\n\n是否將其匯入為目前字庫【${dbName}】的完整字庫？\n(這將會覆蓋目前字庫的單字，但保留您的學習紀錄與錯題)`)) {
+                  const imported = data.map(item => ({
+                    en: (item.en || item.word || '').trim(),
+                    zh: (item.zh || item.meaning || '').trim(),
+                    pos: (item.pos || 'n.').trim(),
+                    eg: (item.eg || item.example || '').trim()
+                  })).filter(item => item.en && item.zh);
+
+                  if (imported.length > 0) {
+                    setVocabList(imported);
+                    localStorage.setItem(`vocab_customVocab_${dbName}`, JSON.stringify(imported));
+                    alert(`單字清單匯入成功！共載入 ${imported.length} 個單字。`);
+                  } else {
+                    alert(`匯入失敗，未找到有效的英文與中文欄位。`);
+                  }
+                  return;
+                }
+              }
+            }
+
+            // 支援 C：標準系統備份格式
+            if (data && data.state) {
+              const importedDbName = data.dbName || dbName || 'vocab_2000';
               let importedState = { ...defaultState, ...data.state };
 
-              // JSON 智慧分流 (判斷是否為舊版 V05 升級)
-              const mistakeKeys = Object.keys(importedState.mistakes || {});
-              const isV05Upgrade = !data.state.historicalMistakes; // V05 備份檔案沒有歷史殿堂欄位
-              if (isV05Upgrade && mistakeKeys.length > 0) {
-                const toHistory = window.confirm(`💡 系統升級詢問：\n\n偵測到備份檔中包含 ${mistakeKeys.length} 個「當前錯題」。\n\n您是否希望將它們直接轉移至【🏛️ 歷史殿堂】？\n(推薦 V05 升級者使用，能大幅減輕初期雙倍消除的負擔)\n\n▶ 按「確定」：全數轉移至歷史殿堂 (進行間隔突襲)\n▶ 按「取消」：保留在當前錯題集中營`);
-
-                if (toHistory) {
-                  const newHistory = { ...importedState.historicalMistakes };
-                  mistakeKeys.forEach(key => {
-                    const m = importedState.mistakes[key];
-                    if (!newHistory[key]) {
-                      newHistory[key] = {
-                        mistakesCount: m.mistakesCount || 1, totalFails: m.mistakesCount || 1, archivedDate: Date.now(),
-                        step: 0, interval: 7, immune: false, data: m.data
-                      };
-                    }
-                  });
-                  importedState.mistakes = {};
-                  importedState.historicalMistakes = newHistory;
-                }
+              // 補足歷史殿堂預設值 (若從無歷史殿堂舊版本匯入)
+              if (!importedState.historicalMistakes) {
+                importedState.historicalMistakes = {};
               }
 
               let currentDbList = [...dbList];
-              if (!currentDbList.includes(data.dbName)) {
-                currentDbList.push(data.dbName);
+              if (!currentDbList.includes(importedDbName)) {
+                currentDbList.push(importedDbName);
                 setDbList(currentDbList);
                 localStorage.setItem('vocab_dbList', JSON.stringify(currentDbList));
               }
 
-              localStorage.setItem('vocab_currentDB', data.dbName);
-              localStorage.setItem(`vocab_state_${data.dbName}`, JSON.stringify(importedState));
-              localStorage.setItem(`vocab_customVocab_${data.dbName}`, JSON.stringify(data.vocabList || rawVocab));
-              localStorage.setItem(`vocab_wordsPerDay_${data.dbName}`, data.wordsPerDay || 50);
-              localStorage.setItem(`vocab_ghostsPerDay_${data.dbName}`, data.ghostsPerDay || 10);
+              localStorage.setItem('vocab_currentDB', importedDbName);
+              localStorage.setItem(`vocab_state_${importedDbName}`, JSON.stringify(importedState));
+              localStorage.setItem(`vocab_customVocab_${importedDbName}`, JSON.stringify(data.vocabList || data.customVocab || rawVocab));
+              localStorage.setItem(`vocab_wordsPerDay_${importedDbName}`, data.wordsPerDay || 50);
+              localStorage.setItem(`vocab_ghostsPerDay_${importedDbName}`, data.ghostsPerDay || 10);
 
-              setDbName(data.dbName);
+              setDbName(importedDbName);
               setState(importedState);
-              setVocabList(data.vocabList || rawVocab);
+              setVocabList(data.vocabList || data.customVocab || rawVocab);
               setWordsPerDay(data.wordsPerDay || 50);
               setGhostsPerDay(data.ghostsPerDay || 10);
-              alert(`成功覆蓋還原！已切換至資料庫：${data.dbName}`);
-            } else alert("JSON 格式不符。");
-          } catch (err) { alert("檔案解析失敗。"); }
+              alert(`成功覆蓋還原！已切換至資料庫：${importedDbName}`);
+              return;
+            }
+
+            alert("JSON 格式不符。");
+          } catch (err) {
+            console.error(err);
+            alert("檔案解析失敗。");
+          }
         };
         reader.readAsText(file);
         e.target.value = "";
@@ -1113,7 +1165,23 @@
                   <button onClick={handleExitSession} className="text-xs px-3 py-1.5 bg-slate-800 hover:bg-red-950/40 text-slate-400 hover:text-red-400 rounded-lg border border-slate-700 transition-colors">暫停存檔</button>
                 </div>
                 <div className="bg-slate-800 w-full min-h-[320px] rounded-3xl shadow-2xl border border-slate-700 flex flex-col items-center justify-center p-6 md:p-8 mb-8 text-center relative touch-none select-none">
-                  <button onClick={() => speak(currentWord.en)} className="absolute top-6 right-6 p-3 bg-slate-700 hover:bg-indigo-900 text-slate-300 rounded-full transition-colors"><IconVolume /></button>
+                  <div className="absolute top-6 right-6 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsDictHintMode(false);
+                        setDictMaskWord('');
+                        setShowDictModal(true);
+                        setSearchQuery(currentWord.en);
+                        performSearch(currentWord.en);
+                      }}
+                      className="p-3 bg-slate-700 hover:bg-indigo-900 text-indigo-300 rounded-full transition-colors"
+                      title="查詢此單字字典"
+                    >
+                      <IconBook />
+                    </button>
+                    <button type="button" onClick={() => speak(currentWord.en)} className="p-3 bg-slate-700 hover:bg-indigo-900 text-slate-300 rounded-full transition-colors" title="播放發音"><IconVolume /></button>
+                  </div>
 
                   {/* 編輯與刪除按鈕 */}
                   <div className="absolute top-6 left-6 flex gap-2">
@@ -1157,7 +1225,9 @@
                   <button onClick={handleExitSession} className="text-xs px-3 py-1.5 bg-slate-800 hover:bg-red-950/40 text-slate-400 hover:text-red-400 rounded-lg border border-slate-700 transition-colors">暫停存檔</button>
                 </div>
                 <div className="bg-slate-800 w-full rounded-3xl shadow-2xl border border-slate-700 p-8 mb-6 text-center relative">
-                  <button onClick={() => speak(currentWord.en)} className="absolute top-4 right-4 p-2 bg-slate-700 hover:bg-indigo-900 text-slate-400 rounded-full transition-colors"><IconVolume /></button>
+                  <div className="absolute top-4 right-4 flex gap-2">
+                    <button type="button" onClick={() => speak(currentWord.en)} className="p-2 bg-slate-700 hover:bg-indigo-900 text-slate-400 rounded-full transition-colors" title="播放發音"><IconVolume /></button>
+                  </div>
 
                   {/* 編輯與刪除按鈕 */}
                   <div className="absolute top-4 left-4 flex gap-2">
@@ -1392,8 +1462,8 @@
                 {/* Header */}
                 <div className="p-6 border-b border-slate-700 flex justify-between items-center">
                   <div>
-                    <h3 className="text-xl font-bold text-slate-100">📖 查字典與手動加字</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">查詢線上字典並新增單字至目前字庫：{dbName}</p>
+                    <h3 className="text-xl font-bold text-slate-100">{isDictHintMode ? '💡 查字典提示 (單字拼寫已隱藏)' : '📖 查字典與手動加字'}</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">{isDictHintMode ? '檢視英文定義與例句提示，助您拼寫記憶！' : `查詢線上字典並新增單字至目前字庫：${dbName}`}</p>
                   </div>
                   <button onClick={() => setShowDictModal(false)} className="p-2 text-slate-400 hover:text-slate-200 bg-slate-700 rounded-full">✕</button>
                 </div>
@@ -1401,34 +1471,36 @@
                 {/* Body */}
                 <div className="p-6 flex-1 overflow-y-auto space-y-6">
                   {/* Search bar */}
-                  <form onSubmit={handleSearch} className="flex gap-2 w-full">
-                    <div className="relative flex-1">
-                      <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="請輸入英文單字進行查詢..."
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:border-indigo-500 font-mono text-indigo-300"
-                      />
-                      {searchQuery.trim() && (
-                        <button
-                          type="button"
-                          onClick={() => speak(searchQuery.trim())}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 p-1 bg-slate-800 hover:bg-slate-700 text-indigo-400 hover:text-indigo-300 rounded-lg transition-colors text-sm"
-                          title="直接發音"
-                        >
-                          🔊
-                        </button>
-                      )}
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={searchLoading}
-                      className="px-6 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold disabled:opacity-50 transition-colors shrink-0"
-                    >
-                      {searchLoading ? '查詢中...' : '查詢'}
-                    </button>
-                  </form>
+                  {!isDictHintMode && (
+                    <form onSubmit={handleSearch} className="flex gap-2 w-full">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="請輸入英文單字進行查詢..."
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:border-indigo-500 font-mono text-indigo-300"
+                        />
+                        {searchQuery.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => speak(searchQuery.trim())}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 bg-slate-800 hover:bg-slate-700 text-indigo-400 hover:text-indigo-300 rounded-lg transition-colors text-sm"
+                            title="直接發音"
+                          >
+                            🔊
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={searchLoading}
+                        className="px-6 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold disabled:opacity-50 transition-colors shrink-0"
+                      >
+                        {searchLoading ? '查詢中...' : '查詢'}
+                      </button>
+                    </form>
+                  )}
 
                   {/* Loading/Error/Matches */}
                   {searchLoading && (
@@ -1452,7 +1524,7 @@
                     </div>
                   )}
 
-                  {localMatches.length > 0 && (
+                  {localMatches.length > 0 && !isDictHintMode && (
                     <div className="bg-amber-950/20 border border-amber-500/30 p-3 rounded-xl space-y-1">
                       <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">⚠️ 本地已存在檢查警告：</span>
                       {localMatches.map((m, i) => (
@@ -1466,171 +1538,179 @@
                   {/* Results List */}
                   {dictResults.length > 0 && (
                     <div className="space-y-3">
-                      <h4 className="text-xs font-bold text-indigo-400 uppercase tracking-wider">線上字典與翻譯查詢結果 ({dictResults.length})</h4>
+                      <h4 className="text-xs font-bold text-indigo-400 uppercase tracking-wider">{isDictHintMode ? '線上字典定義與例句提示' : `線上字典與翻譯查詢結果 (${dictResults.length})`}</h4>
                       <div className="grid grid-cols-1 gap-3 max-h-[260px] overflow-y-auto pr-1">
                         {dictResults.map((item, idx) => (
                           <div key={idx} className="bg-slate-900/40 border border-slate-700/50 p-4 rounded-xl flex justify-between items-start gap-4 hover:border-indigo-500/40 transition-colors">
                             <div className="space-y-1.5 flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-bold font-mono text-base text-slate-200">{item.word}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => speak(item.word)}
-                                  className="p-1 bg-slate-800 hover:bg-slate-700 text-indigo-400 hover:text-indigo-300 rounded-lg transition-colors text-xs flex items-center gap-1 shrink-0"
-                                  title="發音"
-                                >
-                                  🔊
-                                </button>
+                                <span className="font-bold font-mono text-base text-slate-200">{isDictHintMode ? '______' : item.word}</span>
+                                {!isDictHintMode && (
+                                  <button
+                                    type="button"
+                                    onClick={() => speak(item.word)}
+                                    className="p-1 bg-slate-800 hover:bg-slate-700 text-indigo-400 hover:text-indigo-300 rounded-lg transition-colors text-xs flex items-center gap-1 shrink-0"
+                                    title="發音"
+                                  >
+                                    🔊
+                                  </button>
+                                )}
                                 <span className="text-xs text-indigo-400 font-mono">({item.pos})</span>
                               </div>
                               {item.enDef && (
-                                <p className="text-xs text-slate-400 italic break-words">Definition: {item.enDef}</p>
+                                <p className="text-xs text-slate-400 italic break-words">Definition: {isDictHintMode ? maskText(item.enDef, dictMaskWord) : item.enDef}</p>
                               )}
                               <p className="text-sm font-semibold text-indigo-300 break-words">中文預填: {item.zh}</p>
                               {item.eg && (
                                 <p className="text-xs text-slate-500 italic break-words border-l-2 border-slate-700 pl-2 mt-1">
-                                  {item.eg}
+                                  {isDictHintMode ? maskText(item.eg, dictMaskWord) : item.eg}
                                 </p>
                               )}
                             </div>
-                            <button
-                              onClick={() => {
-                                setFormEn(item.word);
-                                setFormPos(item.pos);
-                                setFormZh(item.zh);
-                                setFormEg(item.eg);
-                              }}
-                              className="py-1.5 px-3 bg-indigo-950/60 hover:bg-indigo-900 border border-indigo-500/40 text-xs font-bold text-indigo-300 rounded-lg hover:text-indigo-200 transition-colors flex-shrink-0"
-                            >
-                              帶入此定義
-                            </button>
+                            {!isDictHintMode && (
+                              <button
+                                onClick={() => {
+                                  setFormEn(item.word);
+                                  setFormPos(item.pos);
+                                  setFormZh(item.zh);
+                                  setFormEg(item.eg);
+                                }}
+                                className="py-1.5 px-3 bg-indigo-950/60 hover:bg-indigo-900 border border-indigo-500/40 text-xs font-bold text-indigo-300 rounded-lg hover:text-indigo-200 transition-colors flex-shrink-0"
+                              >
+                                帶入此定義
+                              </button>
+                            )}
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
 
-                  <div className="h-px bg-slate-700/50"></div>
+                  {!isDictHintMode && (
+                    <>
+                      <div className="h-px bg-slate-700/50"></div>
 
-                  {/* Form */}
-                  <div className="space-y-4">
-                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">手動填寫/修改單字表單</h4>
-                    <form onSubmit={handleAddWord} className="space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div className="space-y-1.5">
-                          <div className="flex items-center justify-between">
-                            <label className="text-xs text-slate-400 font-medium">英文單字 <span className="text-rose-500">*</span></label>
-                            {formEn && (
-                              <button
-                                type="button"
-                                onClick={() => speak(formEn)}
-                                className="text-indigo-400 hover:text-indigo-300 text-[10px] font-bold flex items-center gap-0.5"
-                                title="發音"
-                              >
-                                🔊 聽發音
-                              </button>
-                            )}
+                      {/* Form */}
+                      <div className="space-y-4">
+                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">手動填寫/修改單字表單</h4>
+                        <form onSubmit={handleAddWord} className="space-y-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <label className="text-xs text-slate-400 font-medium">英文單字 <span className="text-rose-500">*</span></label>
+                                {formEn && (
+                                  <button
+                                    type="button"
+                                    onClick={() => speak(formEn)}
+                                    className="text-indigo-400 hover:text-indigo-300 text-[10px] font-bold flex items-center gap-0.5"
+                                    title="發音"
+                                  >
+                                    🔊 聽發音
+                                  </button>
+                                )}
+                              </div>
+                              <input
+                                type="text"
+                                required
+                                value={formEn}
+                                onChange={(e) => setFormEn(e.target.value.trim())}
+                                placeholder="例如: challenge"
+                                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-mono text-slate-200"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-xs text-slate-400 font-medium">詞性 (pos) <span className="text-rose-500">*</span></label>
+                              <div className="flex gap-1.5">
+                                <select
+                                  value={['n.', 'v.', 'adj.', 'adv.', 'prep.', 'conj.', 'pron.', 'art.', 'idiom'].includes(formPos) ? formPos : 'custom'}
+                                  onChange={(e) => {
+                                    if (e.target.value !== 'custom') setFormPos(e.target.value);
+                                  }}
+                                  className="bg-slate-900 border border-slate-700 rounded-xl px-2 py-2 text-sm focus:outline-none focus:border-indigo-500 text-slate-200"
+                                >
+                                  <option value="n.">n. 名詞</option>
+                                  <option value="v.">v. 動詞</option>
+                                  <option value="adj.">adj. 形容詞</option>
+                                  <option value="adv.">adv. 副詞</option>
+                                  <option value="prep.">prep. 介係詞</option>
+                                  <option value="conj.">conj. 連接詞</option>
+                                  <option value="pron.">pron. 代名詞</option>
+                                  <option value="art.">art. 冠詞</option>
+                                  <option value="idiom">idiom 片語</option>
+                                  <option value="custom">自訂...</option>
+                                </select>
+                                <input
+                                  type="text"
+                                  required
+                                  value={formPos}
+                                  onChange={(e) => setFormPos(e.target.value)}
+                                  placeholder="詞性"
+                                  className="w-20 bg-slate-900 border border-slate-700 rounded-xl px-2 py-2 text-sm focus:outline-none focus:border-indigo-500 font-mono text-slate-200 text-center"
+                                />
+                              </div>
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-xs text-slate-400 font-medium">中文解釋 <span className="text-rose-500">*</span></label>
+                              <input
+                                type="text"
+                                required
+                                value={formZh}
+                                onChange={(e) => setFormZh(e.target.value)}
+                                placeholder="例如: 挑戰，難題"
+                                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 text-slate-200"
+                              />
+                            </div>
                           </div>
-                          <input
-                            type="text"
-                            required
-                            value={formEn}
-                            onChange={(e) => setFormEn(e.target.value.trim())}
-                            placeholder="例如: challenge"
-                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-mono text-slate-200"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-xs text-slate-400 font-medium">詞性 (pos) <span className="text-rose-500">*</span></label>
-                          <div className="flex gap-1.5">
-                            <select
-                              value={['n.', 'v.', 'adj.', 'adv.', 'prep.', 'conj.', 'pron.', 'art.', 'idiom'].includes(formPos) ? formPos : 'custom'}
-                              onChange={(e) => {
-                                if (e.target.value !== 'custom') setFormPos(e.target.value);
-                              }}
-                              className="bg-slate-900 border border-slate-700 rounded-xl px-2 py-2 text-sm focus:outline-none focus:border-indigo-500 text-slate-200"
+
+                          <div className="space-y-1.5">
+                            <label className="text-xs text-slate-400 font-medium">最常使用的例句 (選填，格式：English (中文翻譯))</label>
+                            <textarea
+                              rows="2"
+                              value={formEg}
+                              onChange={(e) => setFormEg(e.target.value)}
+                              placeholder="例如: It is a big challenge. (這是一個巨大的挑戰。)"
+                              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-sans text-slate-200"
+                            />
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pt-2">
+                            <div className="flex items-center gap-4">
+                              <span className="text-xs font-bold text-slate-400">新增位置：</span>
+                              <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name="insertPosition"
+                                  value="current"
+                                  checked={insertPosition === 'current'}
+                                  onChange={() => setInsertPosition('current')}
+                                  className="accent-indigo-500"
+                                />
+                                目前天數 (第 {currentDay} 天)
+                              </label>
+                              <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name="insertPosition"
+                                  value="end"
+                                  checked={insertPosition === 'end'}
+                                  onChange={() => setInsertPosition('end')}
+                                  className="accent-indigo-500"
+                                />
+                                字庫最末端
+                              </label>
+                            </div>
+
+                            <button
+                              type="submit"
+                              className="w-full sm:w-auto py-2.5 px-8 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold shadow-md transition-colors"
                             >
-                              <option value="n.">n. 名詞</option>
-                              <option value="v.">v. 動詞</option>
-                              <option value="adj.">adj. 形容詞</option>
-                              <option value="adv.">adv. 副詞</option>
-                              <option value="prep.">prep. 介係詞</option>
-                              <option value="conj.">conj. 連接詞</option>
-                              <option value="pron.">pron. 代名詞</option>
-                              <option value="art.">art. 冠詞</option>
-                              <option value="idiom">idiom 片語</option>
-                              <option value="custom">自訂...</option>
-                            </select>
-                            <input
-                              type="text"
-                              required
-                              value={formPos}
-                              onChange={(e) => setFormPos(e.target.value)}
-                              placeholder="詞性"
-                              className="w-20 bg-slate-900 border border-slate-700 rounded-xl px-2 py-2 text-sm focus:outline-none focus:border-indigo-500 font-mono text-slate-200 text-center"
-                            />
+                              新增單字
+                            </button>
                           </div>
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-xs text-slate-400 font-medium">中文解釋 <span className="text-rose-500">*</span></label>
-                          <input
-                            type="text"
-                            required
-                            value={formZh}
-                            onChange={(e) => setFormZh(e.target.value)}
-                            placeholder="例如: 挑戰，難題"
-                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 text-slate-200"
-                          />
-                        </div>
+                        </form>
                       </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-xs text-slate-400 font-medium">最常使用的例句 (選填，格式：English (中文翻譯))</label>
-                        <textarea
-                          rows="2"
-                          value={formEg}
-                          onChange={(e) => setFormEg(e.target.value)}
-                          placeholder="例如: It is a big challenge. (這是一個巨大的挑戰。)"
-                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-sans text-slate-200"
-                        />
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pt-2">
-                        <div className="flex items-center gap-4">
-                          <span className="text-xs font-bold text-slate-400">新增位置：</span>
-                          <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="insertPosition"
-                              value="current"
-                              checked={insertPosition === 'current'}
-                              onChange={() => setInsertPosition('current')}
-                              className="accent-indigo-500"
-                            />
-                            目前天數 (第 {currentDay} 天)
-                          </label>
-                          <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="insertPosition"
-                              value="end"
-                              checked={insertPosition === 'end'}
-                              onChange={() => setInsertPosition('end')}
-                              className="accent-indigo-500"
-                            />
-                            字庫最末端
-                          </label>
-                        </div>
-
-                        <button
-                          type="submit"
-                          className="w-full sm:w-auto py-2.5 px-8 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold shadow-md transition-colors"
-                        >
-                          新增單字
-                        </button>
-                      </div>
-                    </form>
-                  </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
