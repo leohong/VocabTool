@@ -51,28 +51,8 @@
       return pos;
     };
 
-    const maskExample = (eg, word) => {
-      if (!eg || !word) return '';
-      const parts = eg.split(/\s*(\([^)]+\))\s*$/);
-      const enPart = parts[0];
-      const zhPart = parts[1] || '';
-      
-      let maskedEn = enPart;
-      const w = word.trim();
-      const escaped = w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-      
-      // 1. 直接比對更替目標單字 (及其複數/衍生詞字尾)
-      const regex1 = new RegExp('\\b' + escaped + '[a-zA-Z]*\\b', 'gi');
-      maskedEn = maskedEn.replace(regex1, '______');
-      
-      // 2. 針對拼寫變體進行相容性比對 (例如 acknowledgement <-> acknowledgment)
-      if (w.toLowerCase().includes('acknowledg')) {
-        maskedEn = maskedEn.replace(/\backnowledg(e)?ment(s)?\b/gi, '______');
-      } else if (w.toLowerCase().includes('judg')) {
-        maskedEn = maskedEn.replace(/\bjudg(e)?ment(s)?\b/gi, '______');
-      }
-      
-      return zhPart ? `${maskedEn} ${zhPart}` : maskedEn;
+    const cleanApostrophe = (str) => {
+      return (str || '').trim().toLowerCase().replace(/[’‘`′]/g, "'");
     };
 
     const maskText = (text, word) => {
@@ -91,6 +71,16 @@
       }
       
       return maskedTextStr;
+    };
+
+    const maskExample = (eg, word) => {
+      if (!eg || !word) return '';
+      const parts = eg.split(/\s*(\([^)]+\))\s*$/);
+      const enPart = parts[0];
+      const zhPart = parts[1] || '';
+      
+      const maskedEn = maskText(enPart, word);
+      return zhPart ? `${maskedEn} ${zhPart}` : maskedEn;
     };
 
     function App() {
@@ -752,8 +742,8 @@
       // 第二關：填空盲測
       const handleSpellingSubmit = (e) => {
         e.preventDefault();
-        const cleanInput = userInput.trim().toLowerCase().replace(/[’‘`′]/g, "'");
-        const cleanTarget = currentWord.en.trim().toLowerCase().replace(/[’‘`′]/g, "'");
+        const cleanInput = cleanApostrophe(userInput);
+        const cleanTarget = cleanApostrophe(currentWord.en);
         const isCorrect = cleanInput === cleanTarget;
 
         if (isCorrect) {
@@ -1198,7 +1188,7 @@
 
             {/* 標題獨立在最前面 (手機版佔用第一行) */}
             <h1 className="text-lg font-bold text-indigo-400 flex items-center gap-1.5 shrink-0">
-              <IconBook /> 極限特訓 <span className="text-[10px] text-slate-500 font-mono font-normal">v1.1</span>
+              <IconBook /> 極限特訓 <span className="text-[10px] text-slate-500 font-mono font-normal">v1.2</span>
               <a href="https://github.com/leohong/VocabTool/blob/main/README.md" target="_blank" rel="noopener noreferrer" className="ml-2 px-1.5 py-0.5 text-[10px] font-medium text-indigo-300 bg-indigo-950/50 hover:bg-indigo-900/60 border border-indigo-500/30 rounded-md transition-colors flex items-center gap-1">
                 📖 說明書
               </a>
@@ -1473,7 +1463,7 @@
                       </div>
                     )}
 
-                    <input type="text" ref={inputRef} value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder="在此輸入..." autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" onFocus={() => setIsInputFocused(true)} onBlur={() => setIsInputFocused(false)} className={`w-full py-4 px-6 bg-slate-900 border-2 rounded-xl text-xl font-bold font-mono text-center transition-colors tracking-widest focus:outline-none ${typoCount === 1 ? 'border-amber-500/50 text-amber-300' : mustTypeCorrectly ? 'border-emerald-500 text-emerald-300' : 'border-slate-700 text-indigo-300 focus:border-indigo-500'}`} />
+                    <input type="text" ref={inputRef} value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder="在此輸入..." autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" onFocus={() => setIsInputFocused(true)} onBlur={() => setTimeout(() => setIsInputFocused(false), 150)} className={`w-full py-4 px-6 bg-slate-900 border-2 rounded-xl text-xl font-bold font-mono text-center transition-colors tracking-widest focus:outline-none ${typoCount === 1 ? 'border-amber-500/50 text-amber-300' : mustTypeCorrectly ? 'border-emerald-500 text-emerald-300' : 'border-slate-700 text-indigo-300 focus:border-indigo-500'}`} />
 
                     <button type="submit" className={`w-full py-3 font-bold rounded-xl transition-colors shadow-md text-white ${mustTypeCorrectly ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
                       {mustTypeCorrectly ? "已確實手寫記下 (Enter)" : "送出檢查 (Enter)"}
