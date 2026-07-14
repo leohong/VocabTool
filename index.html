@@ -85,6 +85,12 @@
 
     function App() {
       // ----------------------------------------
+      // --- 0. 版本管理常數 (三碼版本號規則) ---
+      // ----------------------------------------
+      const APP_VERSION = "1.2.1"; 
+      const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
+
+      // ----------------------------------------
       // --- 1. 狀態與資料庫管理 ---
       // ----------------------------------------
       const [isInputFocused, setIsInputFocused] = useState(false);
@@ -1565,7 +1571,7 @@
 
             {/* 標題獨立在最前面 (手機版佔用第一行) */}
             <h1 className="text-lg font-bold text-indigo-400 flex items-center gap-1.5 shrink-0">
-              <IconBook /> 極限特訓 <span className="text-[10px] text-slate-500 font-mono font-normal">v1.2</span>
+              <IconBook /> 極限特訓 <span className="text-[10px] text-slate-500 font-mono font-normal">v{DISPLAY_VERSION}</span>
               <a href="https://github.com/leohong/VocabTool/blob/main/README.md" target="_blank" rel="noopener noreferrer" className="ml-2 px-1.5 py-0.5 text-[10px] font-medium text-indigo-300 bg-indigo-950/50 hover:bg-indigo-900/60 border border-indigo-500/30 rounded-md transition-colors flex items-center gap-1">
                 📖 說明書
               </a>
