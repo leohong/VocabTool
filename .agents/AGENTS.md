@@ -1,6 +1,6 @@
 # Project Rules
 
-- **Git Confirmation**: Always ask the user for explicit confirmation in the chat text before proposing or executing any git push or commit commands.
+- **Git Confirmation**: Always ask the user for explicit confirmation in the chat text before proposing or executing any git push commands. Git commit and add commands can be executed or proposed automatically without blocking.
 
 - **Versioning Rule (X.Y.Z)**:
   - Version format is `X.Y.Z` where `X` is Major version, `Y` is Minor version, and `Z` is the Git Push count.
