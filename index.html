@@ -145,6 +145,43 @@
       const [allPage, setAllPage] = useState(1);
       const itemsPerPage = 50;
 
+      // --- 聽音背單字狀態 ---
+      const [showAudioSetupModal, setShowAudioSetupModal] = useState(false);
+      const [audioSource, setAudioSource] = useState('daily'); // 'daily', 'mistakes', 'history', 'library'
+      const [audioRange, setAudioRange] = useState('all'); // 'all', 'page', 'custom', 'word'
+      const [audioStartIdx, setAudioStartIdx] = useState(1);
+      const [audioEndIdx, setAudioEndIdx] = useState(50);
+      const [audioQueue, setAudioQueue] = useState([]);
+      const [currentAudioIndex, setCurrentAudioIndex] = useState(0);
+      const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+      const [audioSettings, setAudioSettings] = useState(() => {
+        const saved = localStorage.getItem('vocab_audioSettings');
+        const defaultSettings = {
+          repeats: 2,
+          wordPause: 1.5,
+          hideSpelling: false,
+          readExample: false,
+          volume: 80,
+          spellingPause: 0,
+          enVoiceName: '',
+          zhVoiceName: ''
+        };
+        if (saved) {
+          try {
+            return { ...defaultSettings, ...JSON.parse(saved) };
+          } catch (e) {
+            return defaultSettings;
+          }
+        }
+        return defaultSettings;
+      });
+      const [voices, setVoices] = useState([]);
+      const [audioStatusText, setAudioStatusText] = useState('準備中');
+      const [audioSubStep, setAudioSubStep] = useState('none'); // 'none', 'word', 'spelling', 'translation', 'example', 'pause'
+      const [activeSpellingChar, setActiveSpellingChar] = useState(-1);
+      const [blindMode, setBlindMode] = useState(false);
+
+
       const handleDeleteWord = (indexInVocab) => {
         const wordToDelete = vocabList[indexInVocab];
         if (!wordToDelete) return;
@@ -578,6 +615,346 @@
         if ((view === 'scanning' || view === 'spelling') && currentWord) speak(currentWord.en);
         if (view === 'spelling' && inputRef.current) inputRef.current.focus();
       }, [currentWord, view]);
+
+      // --- 聽音背單字相關系統與發音引擎 ---
+      useEffect(() => {
+        localStorage.setItem('vocab_audioSettings', JSON.stringify(audioSettings));
+      }, [audioSettings]);
+
+      useEffect(() => {
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          const updateVoices = () => {
+            const allVoices = window.speechSynthesis.getVoices();
+            setVoices(allVoices);
+            setAudioSettings(prev => {
+              const nextSettings = { ...prev };
+              if (!nextSettings.enVoiceName) {
+                const defaultEn = allVoices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) || allVoices.find(v => v.lang.startsWith('en')) || null;
+                if (defaultEn) nextSettings.enVoiceName = defaultEn.name;
+              }
+              if (!nextSettings.zhVoiceName) {
+                const defaultZh = allVoices.find(v => (v.lang === 'zh-TW' || v.lang === 'zh-HK' || v.lang.toLowerCase() === 'zh-hant') && (v.name.includes('Google') || v.name.includes('Microsoft') || v.name.includes('Lekha') || v.name.includes('Yating')))
+                  || allVoices.find(v => v.lang === 'zh-TW' || v.lang === 'zh-HK' || v.lang.toLowerCase() === 'zh-hant')
+                  || allVoices.find(v => v.lang.startsWith('zh') && (v.name.includes('Google') || v.name.includes('Microsoft') || v.name.includes('Lekha') || v.name.includes('Yating')))
+                  || allVoices.find(v => v.lang.startsWith('zh'))
+                  || null;
+                if (defaultZh) nextSettings.zhVoiceName = defaultZh.name;
+              }
+              return nextSettings;
+            });
+          };
+          updateVoices();
+          window.speechSynthesis.onvoiceschanged = updateVoices;
+        }
+      }, []);
+
+      const wakeLockRef = useRef(null);
+      const requestWakeLock = async () => {
+        try {
+          if ('wakeLock' in navigator) {
+            wakeLockRef.current = await navigator.wakeLock.request('screen');
+          }
+        } catch (err) {
+          console.warn('Wake Lock request failed:', err);
+        }
+      };
+
+      const releaseWakeLock = () => {
+        if (wakeLockRef.current) {
+          wakeLockRef.current.release().then(() => {
+            wakeLockRef.current = null;
+          });
+        }
+      };
+
+      const abortControllerRef = useRef(null);
+
+      const speakAsync = (text, lang, voiceName, signal, rate = speechRate) => {
+        return new Promise((resolve) => {
+          if (signal.aborted) {
+            resolve();
+            return;
+          }
+          if (!('speechSynthesis' in window)) {
+            resolve();
+            return;
+          }
+
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = lang;
+          utterance.rate = rate;
+          utterance.volume = (audioSettings.volume ?? 80) / 100;
+
+          if (voiceName) {
+            const allVoices = window.speechSynthesis.getVoices();
+            const voice = allVoices.find(v => v.name === voiceName);
+            if (voice) utterance.voice = voice;
+          }
+
+          const onEnd = () => {
+            resolve();
+          };
+
+          utterance.onend = onEnd;
+          utterance.onerror = onEnd;
+
+          const onAbort = () => {
+            window.speechSynthesis.cancel();
+            resolve();
+          };
+          signal.addEventListener('abort', onAbort);
+
+          window.speechSynthesis.speak(utterance);
+        });
+      };
+
+      const delayAsync = (ms, signal) => {
+        return new Promise((resolve) => {
+          if (signal.aborted) {
+            resolve();
+            return;
+          }
+          const timer = setTimeout(() => {
+            resolve();
+          }, ms);
+
+          signal.addEventListener('abort', () => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+      };
+
+      const stopAudio = () => {
+        setIsAudioPlaying(false);
+        releaseWakeLock();
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+        }
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
+        setAudioStatusText('已停止');
+        setAudioSubStep('none');
+        setActiveSpellingChar(-1);
+        setView('dashboard');
+      };
+
+      const pauseAudio = () => {
+        setIsAudioPlaying(false);
+        releaseWakeLock();
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+        }
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
+        setAudioStatusText('已暫停');
+      };
+
+      const runAudioLoop = async (startIndex, queueToPlay, settings, signal) => {
+        let idx = startIndex;
+        await requestWakeLock();
+        
+        while (idx < queueToPlay.length && !signal.aborted) {
+          setCurrentAudioIndex(idx);
+          const word = queueToPlay[idx];
+          if (!word) break;
+
+          for (let rep = 0; rep < settings.repeats; rep++) {
+            if (signal.aborted) break;
+
+            // 1. 唸讀英文單字
+            setAudioSubStep('word');
+            setAudioStatusText(`朗讀單字 (第 ${rep + 1}/${settings.repeats} 次)...`);
+            await speakAsync(word.en, 'en-US', settings.enVoiceName, signal);
+            if (signal.aborted) break;
+            await delayAsync(400, signal);
+
+             // 2. 拼寫字母
+             setAudioSubStep('spelling');
+             setAudioStatusText(`拼讀字母...`);
+             const chars = word.en.toLowerCase().replace(/[^a-z']/g, '').split('');
+             for (let cIdx = 0; cIdx < chars.length; cIdx++) {
+               if (signal.aborted) break;
+               setActiveSpellingChar(cIdx);
+               await speakAsync(chars[cIdx], 'en-US', settings.enVoiceName, signal);
+               if (signal.aborted) break;
+               await delayAsync((settings.spellingPause ?? 0) * 1000, signal);
+             }
+             setActiveSpellingChar(-1);
+            if (signal.aborted) break;
+            await delayAsync(500, signal);
+
+            // 3. 唸單字與中文釋義
+            setAudioSubStep('translation');
+            setAudioStatusText(`朗讀釋義...`);
+            await speakAsync(word.en, 'en-US', settings.enVoiceName, signal);
+            if (signal.aborted) break;
+            await delayAsync(300, signal);
+
+            const cleanZh = word.zh.replace(/^[a-z.]+\s*/i, '');
+            await speakAsync(cleanZh, 'zh-TW', settings.zhVoiceName, signal);
+            if (signal.aborted) break;
+            await delayAsync(500, signal);
+
+            // 4. 例句朗讀
+            if (settings.readExample && word.eg) {
+              setAudioSubStep('example');
+              setAudioStatusText(`朗讀例句...`);
+              const parts = word.eg.split(/\s*(\([^)]+\))\s*$/);
+              const egEn = parts[0] ? parts[0].trim() : '';
+              const egZh = parts[1] ? parts[1].replace(/[()]/g, '').trim() : '';
+
+              if (egEn) {
+                await speakAsync(egEn, 'en-US', settings.enVoiceName, signal);
+                if (signal.aborted) break;
+                await delayAsync(300, signal);
+              }
+              if (egZh) {
+                await speakAsync(egZh, 'zh-TW', settings.zhVoiceName, signal);
+                if (signal.aborted) break;
+                await delayAsync(500, signal);
+              }
+            }
+
+            // 5. 停頓
+            if (rep === settings.repeats - 1) {
+              setAudioSubStep('pause');
+              setAudioStatusText(`停頓 ${settings.wordPause} 秒...`);
+              await delayAsync(settings.wordPause * 1000, signal);
+            } else {
+              setAudioSubStep('pause');
+              setAudioStatusText(`準備重播單字...`);
+              await delayAsync(1200, signal);
+            }
+          }
+
+          if (signal.aborted) break;
+
+          // 判斷是否為單一單字循環模式
+          if (audioRange === 'word') {
+            continue; // 不遞增索引，重複播放同一個字
+          } else {
+            idx++;
+          }
+        }
+
+        if (!signal.aborted) {
+          setIsAudioPlaying(false);
+          setAudioStatusText('播放完畢');
+          setAudioSubStep('none');
+          releaseWakeLock();
+        }
+      };
+
+      const startAudio = (startIndex = currentAudioIndex) => {
+        if (audioQueue.length === 0) return;
+        setIsAudioPlaying(true);
+
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+        }
+        const abortController = new AbortController();
+        abortControllerRef.current = abortController;
+
+        runAudioLoop(startIndex, audioQueue, audioSettings, abortController.signal);
+      };
+
+      const buildAudioQueue = () => {
+        let baseList = [];
+        if (audioSource === 'daily') {
+          const { baseWords, ghostWords } = getDailyWords();
+          baseList = [...baseWords.map(w => ({ ...w })), ...ghostWords.map(w => ({ ...w }))];
+        } else if (audioSource === 'mistakes') {
+          baseList = Object.values(mistakes).filter(m => m.mistakesCount > 0).map(m => m.data);
+        } else if (audioSource === 'history') {
+          baseList = Object.values(historicalMistakes).map(h => h.data);
+        } else if (audioSource === 'library') {
+          baseList = vocabList;
+        }
+
+        if (baseList.length === 0) return [];
+
+        let finalQueue = [];
+        if (audioRange === 'word') {
+          const selectIndex = Math.min(Math.max(0, currentAudioIndex), baseList.length - 1);
+          finalQueue = [baseList[selectIndex]];
+        } else if (audioRange === 'page') {
+          const pageNum = audioSource === 'library' ? allPage : 1;
+          const start = (pageNum - 1) * itemsPerPage;
+          finalQueue = baseList.slice(start, start + itemsPerPage);
+        } else if (audioRange === 'custom') {
+          const start = Math.max(0, audioStartIdx - 1);
+          const end = Math.min(baseList.length, audioEndIdx);
+          finalQueue = baseList.slice(start, end);
+        } else {
+          finalQueue = baseList;
+        }
+        return finalQueue;
+      };
+
+      const startAudioSession = () => {
+        const queueToPlay = buildAudioQueue();
+        if (queueToPlay.length === 0) {
+          alert('選取的範圍內沒有任何單字！');
+          return;
+        }
+        setAudioQueue(queueToPlay);
+        setCurrentAudioIndex(0);
+        setShowAudioSetupModal(false);
+        setView('audio_player');
+      };
+
+      const playNextWord = () => {
+        if (currentAudioIndex < audioQueue.length - 1) {
+          const nextIdx = currentAudioIndex + 1;
+          setCurrentAudioIndex(nextIdx);
+          setIsAudioPlaying(true);
+          if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+          }
+          const abortController = new AbortController();
+          abortControllerRef.current = abortController;
+          runAudioLoop(nextIdx, audioQueue, audioSettings, abortController.signal);
+        }
+      };
+
+      const playPrevWord = () => {
+        if (currentAudioIndex > 0) {
+          const prevIdx = currentAudioIndex - 1;
+          setCurrentAudioIndex(prevIdx);
+          setIsAudioPlaying(true);
+          if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+          }
+          const abortController = new AbortController();
+          abortControllerRef.current = abortController;
+          runAudioLoop(prevIdx, audioQueue, audioSettings, abortController.signal);
+        }
+      };
+
+      useEffect(() => {
+        if (view === 'audio_player' && audioQueue.length > 0 && isAudioPlaying === false) {
+          setIsAudioPlaying(true);
+          const abortController = new AbortController();
+          abortControllerRef.current = abortController;
+          runAudioLoop(currentAudioIndex, audioQueue, audioSettings, abortController.signal);
+        }
+        
+        return () => {
+          if (view !== 'audio_player') {
+            if (abortControllerRef.current) {
+              abortControllerRef.current.abort();
+            }
+            if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+              window.speechSynthesis.cancel();
+            }
+            releaseWakeLock();
+          }
+        };
+      }, [view, audioQueue]);
 
       // ----------------------------------------
       // --- 2. 核心邏輯與演算法 ---
@@ -1233,12 +1610,15 @@
                   </div>
                 </button>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <button onClick={startExamSession} className="py-4 bg-red-950/40 hover:bg-red-900/60 border border-red-800/50 text-red-300 rounded-xl font-bold text-sm flex flex-col items-center justify-center gap-1.5 transition-colors">
                     <span className="text-xl">🔥</span><span>降溫：錯題大會考</span>
                   </button>
                   <button onClick={startHistoryCheck} className="py-4 bg-amber-950/40 hover:bg-amber-900/60 border border-amber-800/50 text-amber-300 rounded-xl font-bold text-sm flex flex-col items-center justify-center gap-1.5 transition-colors">
                     <span className="text-xl">🏛️</span><span>深度：歷史隨機抽查</span>
+                  </button>
+                  <button onClick={() => setShowAudioSetupModal(true)} className="py-4 bg-indigo-950/40 hover:bg-indigo-900/60 border border-indigo-800/50 text-indigo-300 rounded-xl font-bold text-sm flex flex-col items-center justify-center gap-1.5 transition-colors">
+                    <span className="text-xl">🎧</span><span>聽讀：聽音背單字</span>
                   </button>
                 </div>
 
@@ -1509,7 +1889,465 @@
                 </div>
               </div>
             )}
+
+            {/* 聽音特訓播放器 */}
+            {view === 'audio_player' && audioQueue.length > 0 && (
+              <div className="flex flex-col items-center animate-[fadeIn_0.3s_ease-in-out] w-full max-w-lg mx-auto font-sans">
+                {/* 頂部導航資訊 */}
+                <div className="w-full flex justify-between items-center mb-5 bg-slate-800/40 backdrop-blur-md px-4 py-3 rounded-2xl border border-slate-700/50">
+                  <div className="text-indigo-400 font-medium flex items-center gap-2 text-sm sm:text-base">
+                    <span>🎧 聽讀特訓 ({currentAudioIndex + 1}/{audioQueue.length})</span>
+                  </div>
+                  <button onClick={stopAudio} className="text-xs px-3 py-1.5 bg-slate-800 hover:bg-red-950/40 text-slate-400 hover:text-red-400 rounded-xl border border-slate-700 transition-colors">
+                    🛑 停止並返回
+                  </button>
+                </div>
+
+                {/* 主播放字卡 */}
+                <div className="bg-gradient-to-b from-slate-800 to-slate-900 w-full min-h-[300px] rounded-3xl shadow-2xl border border-slate-700/60 flex flex-col items-center justify-between p-6 sm:p-8 mb-6 text-center relative overflow-hidden">
+                  
+                  {/* 背景裝飾微光 */}
+                  <div className="absolute -top-24 -left-24 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl"></div>
+                  <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl"></div>
+
+                  {/* 頂部狀態列 */}
+                  <div className="w-full flex justify-between items-center z-10">
+                    <span className="px-2.5 py-1 bg-slate-900/60 text-slate-400 rounded-full text-[11px] font-mono border border-slate-800">
+                      來源: {
+                        audioSource === 'daily' ? '📅 今日進度' :
+                        audioSource === 'mistakes' ? '🔥 錯題本' :
+                        audioSource === 'history' ? '🏛️ 歷史殿堂' : '🗄️ 全字庫'
+                      }
+                    </span>
+                    
+                    {/* 眼睛按鈕 (切換盲聽模式) */}
+                    <button
+                      type="button"
+                      onClick={() => setBlindMode(!blindMode)}
+                      className={`p-2.5 rounded-full transition-colors z-10 ${blindMode ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                      title={blindMode ? '點擊顯示英文單字' : '點擊隱藏英文單字 (盲聽訓練)'}
+                    >
+                      {blindMode ? '🙈 盲聽中' : '👁️ 檢視中'}
+                    </button>
+                  </div>
+
+                  {/* 中間單字主內容 */}
+                  <div className="my-auto py-4 z-10 w-full">
+                    {/* 詞性 */}
+                    <span className="text-indigo-400 font-mono font-bold text-sm tracking-widest block mb-2 uppercase">
+                      {audioQueue[currentAudioIndex]?.pos}
+                    </span>
+
+                    {/* 單字拼寫展示 */}
+                    <div className="min-h-[80px] flex items-center justify-center flex-wrap gap-1.5 mb-4">
+                      {blindMode ? (
+                        <div className="text-slate-500 tracking-widest font-mono text-3xl font-black opacity-80">
+                          {Array(audioQueue[currentAudioIndex]?.en.length).fill('•').join(' ')}
+                        </div>
+                      ) : (
+                        <h2 className="text-4xl sm:text-5xl font-black text-slate-100 tracking-tight break-all font-mono">
+                          {audioQueue[currentAudioIndex]?.en}
+                        </h2>
+                      )}
+                    </div>
+
+                    {/* 拼字動態高亮展示區域 */}
+                    {audioSubStep === 'spelling' && (
+                      <div className="flex justify-center flex-wrap gap-2 py-1 px-4 bg-slate-900/40 rounded-2xl border border-slate-800/40 max-w-sm mx-auto mb-4">
+                        {audioQueue[currentAudioIndex]?.en.toLowerCase().replace(/[^a-z']/g, '').split('').map((char, index) => {
+                          const isActive = index === activeSpellingChar;
+                          return (
+                            <span
+                              key={index}
+                              className={`text-xl sm:text-2xl font-black font-mono transition-all duration-150 ${
+                                isActive
+                                  ? 'text-indigo-400 scale-125 drop-shadow-[0_0_10px_rgba(129,140,248,0.8)]'
+                                  : 'text-slate-600'
+                              }`}
+                            >
+                              {char.toUpperCase()}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* 中文釋義 */}
+                    <div className="min-h-[36px] mt-2">
+                      {blindMode && audioSubStep !== 'translation' && audioSubStep !== 'example' && audioSubStep !== 'pause' ? (
+                        <span className="text-slate-600 italic text-sm">中文釋義已遮蔽</span>
+                      ) : (
+                        <p className="text-2xl sm:text-3xl font-bold text-indigo-300">
+                          {audioQueue[currentAudioIndex]?.zh}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 底部狀態與例句 */}
+                  <div className="w-full z-10">
+                    {/* 例句區塊 */}
+                    {audioQueue[currentAudioIndex]?.eg && (
+                      <div className="mb-4 text-left p-3.5 bg-slate-900/40 rounded-2xl border border-slate-800/40 max-h-[80px] overflow-y-auto">
+                        <span className="text-[10px] text-slate-500 font-bold block mb-0.5">例句提示:</span>
+                        {blindMode && audioSubStep !== 'example' ? (
+                          <p className="text-xs text-slate-600 italic">例句已遮蔽</p>
+                        ) : (
+                          <p className="text-xs text-slate-300 italic font-sans break-words">
+                            {audioQueue[currentAudioIndex].eg}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 播音進度與動畫狀態 */}
+                    <div className="flex items-center justify-between gap-3 text-xs font-mono text-slate-400 bg-slate-900/60 px-4 py-2.5 rounded-2xl border border-slate-800">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`w-2.5 h-2.5 rounded-full ${
+                          audioSubStep === 'word' ? 'bg-indigo-400 animate-pulse' :
+                          audioSubStep === 'spelling' ? 'bg-purple-400 animate-pulse' :
+                          audioSubStep === 'translation' ? 'bg-pink-400 animate-pulse' :
+                          audioSubStep === 'example' ? 'bg-cyan-400 animate-pulse' :
+                          audioSubStep === 'pause' ? 'bg-amber-400 animate-ping' : 'bg-slate-600'
+                        }`}></span>
+                        <span className="font-bold text-slate-200">{audioStatusText}</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500">
+                        進度: {Math.round(((currentAudioIndex + 1) / audioQueue.length) * 100)}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 播控按鈕面板 */}
+                <div className="w-full bg-slate-800/80 backdrop-blur-md p-5 rounded-3xl border border-slate-700/60 shadow-xl space-y-4">
+                  {/* 音訊進度滑桿 */}
+                  <div className="w-full bg-slate-900/50 p-2.5 rounded-2xl border border-slate-800/50">
+                    <div className="flex justify-between text-[10px] text-slate-500 font-mono mb-1">
+                      <span>開始: 0%</span>
+                      <span>進度: {currentAudioIndex + 1} / {audioQueue.length} 字</span>
+                      <span>結束: 100%</span>
+                    </div>
+                    <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                      <div className="bg-gradient-to-r from-indigo-500 to-purple-500 h-1.5 transition-all duration-300" style={{ width: `${((currentAudioIndex + 1) / audioQueue.length) * 100}%` }}></div>
+                    </div>
+                  </div>
+
+                  {/* 播控大按鈕 */}
+                  <div className="flex items-center justify-between gap-2">
+                    {/* 單一單字循環鎖定 */}
+                    <button
+                      type="button"
+                      onClick={() => setAudioRange(r => r === 'word' ? 'all' : 'word')}
+                      className={`p-3 rounded-2xl border transition-all flex flex-col items-center justify-center gap-1 w-16 ${
+                        audioRange === 'word'
+                          ? 'bg-amber-900/40 text-amber-300 border-amber-600/50'
+                          : 'bg-slate-900/30 text-slate-500 border-slate-800'
+                      }`}
+                      title={audioRange === 'word' ? '取消單字循環播放' : '啟用單字循環播放'}
+                    >
+                      <span className="text-lg">🔁</span>
+                      <span className="text-[9px] font-bold">單字循環</span>
+                    </button>
+
+                    <div className="flex items-center gap-3">
+                      {/* 上一個 */}
+                      <button
+                        type="button"
+                        onClick={playPrevWord}
+                        disabled={currentAudioIndex === 0}
+                        className="w-12 h-12 flex items-center justify-center bg-slate-900/80 hover:bg-slate-700 text-slate-300 disabled:opacity-30 disabled:hover:bg-slate-900/80 rounded-2xl transition-colors border border-slate-800 shadow-md"
+                        title="上一個單字"
+                      >
+                        ⏮️
+                      </button>
+
+                      {/* 播放 / 暫停 */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isAudioPlaying) {
+                            pauseAudio();
+                          } else {
+                            startAudio(currentAudioIndex);
+                          }
+                        }}
+                        className={`w-16 h-16 flex items-center justify-center rounded-2xl transition-all shadow-lg ${
+                          isAudioPlaying
+                            ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/40'
+                            : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/40'
+                        }`}
+                        title={isAudioPlaying ? '暫停播放' : '繼續播放'}
+                      >
+                        {isAudioPlaying ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"></rect><rect x="14" y="4" width="4" height="16" rx="1"></rect></svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        )}
+                      </button>
+
+                      {/* 下一個 */}
+                      <button
+                        type="button"
+                        onClick={playNextWord}
+                        disabled={currentAudioIndex === audioQueue.length - 1}
+                        className="w-12 h-12 flex items-center justify-center bg-slate-900/80 hover:bg-slate-700 text-slate-300 disabled:opacity-30 disabled:hover:bg-slate-900/80 rounded-2xl transition-colors border border-slate-800 shadow-md"
+                        title="下一個單字"
+                      >
+                        ⏭️
+                      </button>
+                    </div>
+
+                    {/* 音量控制滑桿 */}
+                    <div className="flex flex-col items-center bg-slate-900/30 p-2 rounded-2xl border border-slate-800/40 w-16">
+                      <span className="text-[9px] text-slate-500 font-bold mb-1">音量: {audioSettings.volume}%</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={audioSettings.volume}
+                        onChange={(e) => setAudioSettings(prev => ({ ...prev, volume: parseInt(e.target.value, 10) }))}
+                        className="w-12 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </main>
+
+          {/* --- 聽音特訓設定 Modal --- */}
+          {showAudioSetupModal && (
+            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-[fadeIn_0.2s_ease-in-out] font-sans">
+              <div className="bg-slate-800 w-full max-w-lg rounded-3xl shadow-2xl flex flex-col border border-slate-700 max-h-[90vh]">
+                
+                {/* Header */}
+                <div className="p-5 sm:p-6 border-b border-slate-700 flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-100 flex items-center gap-2">🎧 聽寫背單字特訓</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">自訂您的朗讀拼寫規則與語音人</p>
+                  </div>
+                  <button onClick={() => setShowAudioSetupModal(false)} className="p-2 text-slate-400 hover:text-slate-200 bg-slate-700 rounded-full">✕</button>
+                </div>
+
+                {/* Body */}
+                <div className="p-5 sm:p-6 flex-1 overflow-y-auto space-y-5 text-sm">
+                  {/* 1. 來源選擇 */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">1. 選擇單字來源 (Select Word Source)</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { id: 'daily', label: '📅 今日進度', count: getDailyWords().baseWords.length + getDailyWords().ghostWords.length },
+                        { id: 'mistakes', label: '🔥 錯題集中營', count: activeMistakesList.length },
+                        { id: 'history', label: '🏛️ 歷史殿堂', count: historyTotal },
+                        { id: 'library', label: '🗄️ 整個單字庫', count: vocabList.length }
+                      ].map(src => (
+                        <button
+                          key={src.id}
+                          type="button"
+                          onClick={() => {
+                            setAudioSource(src.id);
+                            // 如果來源切換，自動調整編號上限
+                            setAudioEndIdx(src.count || 50);
+                          }}
+                          className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                            audioSource === src.id
+                              ? 'bg-indigo-950/40 text-indigo-300 border-indigo-500/60 shadow-md'
+                              : 'bg-slate-900/30 text-slate-400 border-slate-700/50 hover:bg-slate-800/30'
+                          }`}
+                        >
+                          <span className="font-bold text-xs">{src.label}</span>
+                          <span className="text-[10px] text-slate-500 mt-1">包含: {src.count} 字</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 2. 播放範圍 */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">2. 播放範圍控制 (Select Playback Range)</label>
+                    <select
+                      value={audioRange}
+                      onChange={(e) => setAudioRange(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-indigo-500 text-indigo-300 font-bold"
+                    >
+                      <option value="all">全字庫 / 全來源單字播放 (全部)</option>
+                      <option value="page">當前分頁單字播放 (一個page)</option>
+                      <option value="custom">自訂單字編號範圍 (區間播放)</option>
+                      <option value="word">單一單字無限循環模式 (一個字)</option>
+                    </select>
+
+                    {/* 當選擇自訂區間時展示輸入框 */}
+                    {audioRange === 'custom' && (
+                      <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 flex items-center justify-between gap-3 animate-[fadeIn_0.2s_ease-in-out]">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400">開始編號:</span>
+                          <input
+                            type="number"
+                            min="1"
+                            value={audioStartIdx}
+                            onChange={(e) => setAudioStartIdx(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                            className="w-16 bg-slate-900 border border-slate-700 rounded-lg py-1 px-1.5 text-center text-xs text-indigo-400 focus:outline-none focus:border-indigo-500 font-mono"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400">結束編號:</span>
+                          <input
+                            type="number"
+                            min="1"
+                            value={audioEndIdx}
+                            onChange={(e) => setAudioEndIdx(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                            className="w-16 bg-slate-900 border border-slate-700 rounded-lg py-1 px-1.5 text-center text-xs text-indigo-400 focus:outline-none focus:border-indigo-500 font-mono"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3. 語音朗讀設定 */}
+                  <div className="space-y-3 bg-slate-900/30 p-4 rounded-2xl border border-slate-700/40">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">3. 語音朗讀與重播設定</label>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* 重複次數 */}
+                      <div className="flex justify-between items-center gap-2">
+                        <span className="text-xs font-bold text-slate-300">單字重複次數:</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max="10"
+                          value={audioSettings.repeats}
+                          onChange={(e) => setAudioSettings(prev => ({ ...prev, repeats: Math.min(10, Math.max(1, parseInt(e.target.value, 10) || 1)) }))}
+                          className="w-14 bg-slate-900 border border-slate-700 rounded-lg py-1 text-center text-xs focus:outline-none focus:border-indigo-500 text-indigo-400 font-bold font-mono"
+                        />
+                      </div>
+                      
+                      {/* 停頓秒數 */}
+                      <div className="flex justify-between items-center gap-2 border-l border-slate-700/50 pl-4">
+                        <span className="text-xs font-bold text-slate-300">單字間停頓 (秒):</span>
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0.5"
+                          max="10"
+                          value={audioSettings.wordPause}
+                          onChange={(e) => setAudioSettings(prev => ({ ...prev, wordPause: Math.min(10, Math.max(0.5, parseFloat(e.target.value) || 0.5)) }))}
+                          className="w-14 bg-slate-900 border border-slate-700 rounded-lg py-1 text-center text-xs focus:outline-none focus:border-indigo-500 text-indigo-400 font-bold font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="h-px bg-slate-700/50 my-1"></div>
+
+                    {/* 拼讀字母停頓時間 */}
+                    <div className="flex items-center justify-between py-1">
+                      <span className="text-xs font-bold text-slate-300">拼讀字母間的停頓時間 (秒):</span>
+                      <select
+                        value={audioSettings.spellingPause ?? 0.15}
+                        onChange={(e) => setAudioSettings(prev => ({ ...prev, spellingPause: parseFloat(e.target.value) }))}
+                        className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-indigo-400 font-bold focus:outline-none focus:border-indigo-500 font-mono"
+                      >
+                        <option value="0">0 秒 (無停頓連讀)</option>
+                        <option value="0.02">0.02 秒 (微停頓)</option>
+                        <option value="0.05">0.05 秒 (極快)</option>
+                        <option value="0.1">0.1 秒 (較快)</option>
+                        <option value="0.15">0.15 秒 (正常 - 預設)</option>
+                        <option value="0.2">0.2 秒 (較慢)</option>
+                        <option value="0.3">0.3 秒 (慢)</option>
+                        <option value="0.5">0.5 秒 (極慢)</option>
+                      </select>
+                    </div>
+
+                    {/* 切換朗讀例句 */}
+                    <div className="flex items-center justify-between py-1">
+                      <span className="text-xs font-bold text-slate-300">是否同時朗讀例句與翻譯:</span>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={audioSettings.readExample}
+                          onChange={(e) => setAudioSettings(prev => ({ ...prev, readExample: e.target.checked }))}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                      </label>
+                    </div>
+
+                    {/* 盲讀設定 */}
+                    <div className="flex items-center justify-between py-1">
+                      <span className="text-xs font-bold text-slate-300">預設開啟盲聽遮蔽模式:</span>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={blindMode}
+                          onChange={(e) => setBlindMode(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* 4. 語音發音人選擇 */}
+                  <div className="space-y-3 bg-slate-900/30 p-4 rounded-2xl border border-slate-700/40">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">4. 發音引擎與語音選擇 (TTS Accents)</label>
+                    
+                    {/* 英文發音 */}
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-bold text-slate-300 block">🇺🇸 英文語音發音人 (English Voice):</span>
+                      <select
+                        value={audioSettings.enVoiceName}
+                        onChange={(e) => setAudioSettings(prev => ({ ...prev, enVoiceName: e.target.value }))}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs focus:outline-none focus:border-indigo-500 text-indigo-300 font-mono"
+                      >
+                        {voices.filter(v => v.lang.startsWith('en')).map(v => (
+                          <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
+                        ))}
+                        {voices.filter(v => v.lang.startsWith('en')).length === 0 && (
+                          <option value="">(系統預設英文)</option>
+                        )}
+                      </select>
+                    </div>
+
+                    {/* 中文發音 */}
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-bold text-slate-300 block">🇹🇼 中文釋義發音人 (Chinese Voice):</span>
+                      <select
+                        value={audioSettings.zhVoiceName}
+                        onChange={(e) => setAudioSettings(prev => ({ ...prev, zhVoiceName: e.target.value }))}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs focus:outline-none focus:border-indigo-500 text-indigo-300 font-mono"
+                      >
+                        {voices.filter(v => v.lang.startsWith('zh')).map(v => (
+                          <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
+                        ))}
+                        {voices.filter(v => v.lang.startsWith('zh')).length === 0 && (
+                          <option value="">(系統預設中文)</option>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer Buttons */}
+                <div className="p-5 border-t border-slate-700 flex justify-end gap-3 bg-slate-800/50 rounded-b-3xl">
+                  <button
+                    type="button"
+                    onClick={() => setShowAudioSetupModal(false)}
+                    className="px-5 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-xl font-bold transition-colors"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={startAudioSession}
+                    className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold shadow-md transition-colors"
+                  >
+                    🚀 開始聽讀特訓
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          )}
 
           {/* --- 本日單字預覽 Modal --- */}
           {showPreviewModal && (
