@@ -87,7 +87,7 @@
       // ----------------------------------------
       // --- 0. 版本管理常數 (三碼版本號規則) ---
       // ----------------------------------------
-      const APP_VERSION = "1.2.2"; 
+      const APP_VERSION = "1.2.3"; 
       const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
 
       // ----------------------------------------
@@ -188,7 +188,46 @@
       const [blindMode, setBlindMode] = useState(false);
 
 
-      const handleDeleteWord = (indexInVocab) => {
+      const handleDeleteWord = (indexInVocab, wordObj) => {
+        if (indexInVocab === -1) {
+          const fallbackWord = wordObj || currentWord;
+          if (!fallbackWord) return;
+          if (!window.confirm(`此單字已不在目前字庫中，確定要將其從「學習紀錄/錯題本」中移除嗎？`)) return;
+
+          const wordEn = fallbackWord.en;
+          // 同步刪除錯題與歷史紀錄
+          setState(prev => {
+            const nextState = { ...prev };
+            if (prev.mistakes && prev.mistakes[wordEn]) {
+              nextState.mistakes = { ...prev.mistakes };
+              delete nextState.mistakes[wordEn];
+            }
+            if (prev.historicalMistakes && prev.historicalMistakes[wordEn]) {
+              nextState.historicalMistakes = { ...prev.historicalMistakes };
+              delete nextState.historicalMistakes[wordEn];
+            }
+            return nextState;
+          });
+
+          // 如果目前處於特訓模式，且刪除的是當前單字，則自動跳過
+          if (view === 'scanning' || view === 'spelling') {
+            const newQueue = queue.filter(w => w.en.trim().toLowerCase() !== wordEn.trim().toLowerCase());
+            setQueue(newQueue);
+            if (newQueue.length === 0) {
+              setView('summary');
+            } else {
+              if (currentWord && currentWord.en.trim().toLowerCase() === wordEn.trim().toLowerCase()) {
+                setCurrentWord(newQueue[0]);
+                setUserInput('');
+                setTypoCount(0);
+                setMustTypeCorrectly(false);
+                setCopyFailCount(0);
+              }
+            }
+          }
+          return;
+        }
+
         const wordToDelete = vocabList[indexInVocab];
         if (!wordToDelete) return;
         if (!window.confirm(`確定要從此字庫中「徹底刪除」單字【${wordToDelete.en}】嗎？\n此動作無法還原。`)) return;
@@ -231,6 +270,10 @@
       };
 
       const startEditing = (idx) => {
+        if (idx === -1) {
+          alert('此單字不在目前字庫中，無法編輯。如需編輯，請先將此單字新增至字庫。');
+          return;
+        }
         const w = vocabList[idx];
         if (!w) return;
         setEditingIndex(idx);
@@ -1763,7 +1806,7 @@
                       ✏️
                     </button>
                     <button
-                      onClick={() => handleDeleteWord(vocabList.findIndex(w => w.en.trim().toLowerCase() === currentWord.en.trim().toLowerCase()))}
+                      onClick={() => handleDeleteWord(vocabList.findIndex(w => w.en.trim().toLowerCase() === currentWord.en.trim().toLowerCase()), currentWord)}
                       className="p-2 bg-slate-700 hover:bg-rose-900 text-rose-300 rounded-full transition-colors text-xs"
                       title="徹底刪除此單字"
                     >
@@ -1809,7 +1852,7 @@
                       ✏️
                     </button>
                     <button
-                      onClick={() => handleDeleteWord(vocabList.findIndex(w => w.en.trim().toLowerCase() === currentWord.en.trim().toLowerCase()))}
+                      onClick={() => handleDeleteWord(vocabList.findIndex(w => w.en.trim().toLowerCase() === currentWord.en.trim().toLowerCase()), currentWord)}
                       className="p-1.5 bg-slate-700 hover:bg-rose-900 text-rose-300 rounded-full transition-colors text-xs"
                       title="徹底刪除此單字"
                     >
@@ -2390,7 +2433,7 @@
                             ✏️
                           </button>
                           <button
-                            onClick={() => handleDeleteWord(vocabList.findIndex(w => w.en.trim().toLowerCase() === word.en.trim().toLowerCase()))}
+                            onClick={() => handleDeleteWord(vocabList.findIndex(w => w.en.trim().toLowerCase() === word.en.trim().toLowerCase()), word)}
                             className="p-1.5 bg-slate-800 text-rose-400 hover:text-rose-300 rounded border border-slate-700 text-xs"
                             title="刪除"
                           >
