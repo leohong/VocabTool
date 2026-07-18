@@ -8,3 +8,4 @@
   - Before executing any `git commit`/`git push`, the developer or AI agent MUST increment `Z` (the third digit) by 1 (e.g. from `1.2.0` to `1.2.1`) inside the `APP_VERSION` constant in `index.html`.
   - When major or minor features are added, manually increment `X` or `Y` and reset `Z` to `0` or `1`.
 
+- **Change Approval**: Always present the implementation plan/proposal and get the user's explicit consent in the chat BEFORE making any code modifications. If the user only asks for explanations or troubleshooting reasons, do NOT modify the codebase.
