@@ -87,7 +87,7 @@
       // ----------------------------------------
       // --- 0. 版本管理常數 (三碼版本號規則) ---
       // ----------------------------------------
-      const APP_VERSION = "1.2.4"; 
+      const APP_VERSION = "1.2.5"; 
       const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
 
       // ----------------------------------------
@@ -702,6 +702,19 @@
 
       const abortControllerRef = useRef(null);
 
+      const unlockSpeechOnIOS = () => {
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+          if (isIOS) {
+            window.speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(' ');
+            u.lang = 'en-US';
+            u.volume = 0;
+            window.speechSynthesis.speak(u);
+          }
+        }
+      };
+
       const speakAsync = (text, lang, voiceName, signal, rate = speechRate) => {
         return new Promise((resolve) => {
           if (signal.aborted) {
@@ -719,7 +732,8 @@
           utterance.rate = rate;
           utterance.volume = (audioSettings.volume ?? 80) / 100;
 
-          if (voiceName) {
+          const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+          if (voiceName && !isIOS) {
             const allVoices = window.speechSynthesis.getVoices();
             const voice = allVoices.find(v => v.name === voiceName);
             if (voice) utterance.voice = voice;
@@ -892,6 +906,7 @@
         const abortController = new AbortController();
         abortControllerRef.current = abortController;
 
+        unlockSpeechOnIOS();
         runAudioLoop(startIndex, audioQueue, audioSettings, abortController.signal);
       };
 
@@ -934,6 +949,7 @@
           alert('選取的範圍內沒有任何單字！');
           return;
         }
+        unlockSpeechOnIOS();
         setAudioQueue(queueToPlay);
         setCurrentAudioIndex(0);
         setShowAudioSetupModal(false);
@@ -950,6 +966,7 @@
           }
           const abortController = new AbortController();
           abortControllerRef.current = abortController;
+          unlockSpeechOnIOS();
           runAudioLoop(nextIdx, audioQueue, audioSettings, abortController.signal);
         }
       };
@@ -964,6 +981,7 @@
           }
           const abortController = new AbortController();
           abortControllerRef.current = abortController;
+          unlockSpeechOnIOS();
           runAudioLoop(prevIdx, audioQueue, audioSettings, abortController.signal);
         }
       };
