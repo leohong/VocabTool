@@ -87,7 +87,7 @@
       // ----------------------------------------
       // --- 0. 版本管理常數 (三碼版本號規則) ---
       // ----------------------------------------
-      const APP_VERSION = "1.2.6"; 
+      const APP_VERSION = "1.2.7"; 
       const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
 
       // ----------------------------------------
@@ -2085,22 +2085,7 @@
                   </div>
 
                   {/* 播控大按鈕 */}
-                  <div className="flex items-center justify-between gap-2">
-                    {/* 單一單字循環鎖定 */}
-                    <button
-                      type="button"
-                      onClick={() => setAudioRange(r => r === 'word' ? 'all' : 'word')}
-                      className={`p-3 rounded-2xl border transition-all flex flex-col items-center justify-center gap-1 w-16 ${
-                        audioRange === 'word'
-                          ? 'bg-amber-900/40 text-amber-300 border-amber-600/50'
-                          : 'bg-slate-900/30 text-slate-500 border-slate-800'
-                      }`}
-                      title={audioRange === 'word' ? '取消單字循環播放' : '啟用單字循環播放'}
-                    >
-                      <span className="text-lg">🔁</span>
-                      <span className="text-[9px] font-bold">單字循環</span>
-                    </button>
-
+                  <div className="flex items-center justify-center gap-2">
                     <div className="flex items-center gap-3">
                       {/* 上一個 */}
                       <button
@@ -2147,19 +2132,6 @@
                       >
                         ⏭️
                       </button>
-                    </div>
-
-                    {/* 音量控制滑桿 */}
-                    <div className="flex flex-col items-center bg-slate-900/30 p-2 rounded-2xl border border-slate-800/40 w-16">
-                      <span className="text-[9px] text-slate-500 font-bold mb-1">音量: {audioSettings.volume}%</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={audioSettings.volume}
-                        onChange={(e) => setAudioSettings(prev => ({ ...prev, volume: parseInt(e.target.value, 10) }))}
-                        className="w-12 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                      />
                     </div>
                   </div>
                 </div>
