@@ -87,7 +87,7 @@
       // ----------------------------------------
       // --- 0. 版本管理常數 (三碼版本號規則) ---
       // ----------------------------------------
-      const APP_VERSION = "1.2.5"; 
+      const APP_VERSION = "1.2.6"; 
       const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
 
       // ----------------------------------------
@@ -2338,40 +2338,7 @@
                     </div>
                   </div>
 
-                  {/* 4. 語音發音人選擇 */}
-                  <div className="space-y-3 bg-slate-900/30 p-4 rounded-2xl border border-slate-700/40">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">4. 發音引擎與語音選擇 (TTS Accents)</label>
-                    
-                    {/* 英文發音 */}
-                    <div className="space-y-1.5">
-                      <span className="text-xs font-bold text-slate-300 block">🇺🇸 英文語音發音人 (English Voice):</span>
-                      <select
-                        value={audioSettings.enVoiceName}
-                        onChange={(e) => setAudioSettings(prev => ({ ...prev, enVoiceName: e.target.value }))}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs focus:outline-none focus:border-indigo-500 text-indigo-300 font-mono"
-                      >
-                        <option value="">(系統預設英文)</option>
-                        {voices.filter(v => v.lang.startsWith('en')).map(v => (
-                          <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
-                        ))}
-                      </select>
-                    </div>
 
-                    {/* 中文發音 */}
-                    <div className="space-y-1.5">
-                      <span className="text-xs font-bold text-slate-300 block">🇹🇼 中文釋義發音人 (Chinese Voice):</span>
-                      <select
-                        value={audioSettings.zhVoiceName}
-                        onChange={(e) => setAudioSettings(prev => ({ ...prev, zhVoiceName: e.target.value }))}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs focus:outline-none focus:border-indigo-500 text-indigo-300 font-mono"
-                      >
-                        <option value="">(系統預設中文)</option>
-                        {voices.filter(v => v.lang.startsWith('zh')).map(v => (
-                          <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
                 </div>
 
                 {/* Footer Buttons */}
