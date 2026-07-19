@@ -59,3 +59,9 @@ This skill documents critical design, implementation, and testing pitfalls encou
 - **Guideline (UI Compression)**: Use a React state (`isInputFocused`) to track when spelling inputs are active. Under focus:
   1. Hide non-essential layout items (like `<header>`) using conditional rendering: `{!(view === 'spelling' && isInputFocused) && <header>...</header>}`.
   2. Dynamically reduce card margins and paddings (e.g., `p-4 mb-2` instead of `p-8 mb-6`) to compress the vertical footprint, ensuring the entire card fits inside the remaining vertical space.
+
+---
+
+## 7. Active Training Session Queue Filtration on Deletion
+- **Pitfall**: When a user deletes a word during Quick Scan (快速掃描), filtering it only from the active queue (`queue`) leaves the word in `currentSessionWords`. Since `currentSessionWords` is re-loaded when transitioning to the Spelling (`spelling`) stage, the deleted word unexpectedly reappears in the spelling test.
+- **Guideline**: When deleting a word during any active training stage (Quick Scan, Spelling, etc.), ensure it is filtered out of BOTH `queue` and `currentSessionWords` to keep the session state fully synchronized and prevent the word from showing up in subsequent stages.

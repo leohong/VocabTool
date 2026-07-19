@@ -87,7 +87,7 @@
       // ----------------------------------------
       // --- 0. 版本管理常數 (三碼版本號規則) ---
       // ----------------------------------------
-      const APP_VERSION = "1.2.7"; 
+      const APP_VERSION = "1.2.8"; 
       const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
 
       // ----------------------------------------
@@ -209,10 +209,14 @@
             return nextState;
           });
 
-          // 如果目前處於特訓模式，且刪除的是當前單字，則自動跳過
+          // 過濾特訓佇列與本輪所有單字
+          const newQueue = queue.filter(w => w.en.trim().toLowerCase() !== wordEn.trim().toLowerCase());
+          setQueue(newQueue);
+          const newSessionWords = currentSessionWords.filter(w => w.en.trim().toLowerCase() !== wordEn.trim().toLowerCase());
+          setCurrentSessionWords(newSessionWords);
+
+          // 如果目前處於特訓模式，且刪除的是當前單字，則自動跳過或結束
           if (view === 'scanning' || view === 'spelling') {
-            const newQueue = queue.filter(w => w.en.trim().toLowerCase() !== wordEn.trim().toLowerCase());
-            setQueue(newQueue);
             if (newQueue.length === 0) {
               setView('summary');
             } else {
@@ -251,10 +255,14 @@
           return nextState;
         });
 
-        // 如果目前處於特訓模式，且刪除的是當前單字，則自動跳過
+        // 過濾特訓佇列與本輪所有單字
+        const newQueue = queue.filter(w => w.en.trim().toLowerCase() !== wordToDelete.en.trim().toLowerCase());
+        setQueue(newQueue);
+        const newSessionWords = currentSessionWords.filter(w => w.en.trim().toLowerCase() !== wordToDelete.en.trim().toLowerCase());
+        setCurrentSessionWords(newSessionWords);
+
+        // 如果目前處於特訓模式，且刪除的是當前單字，則自動跳過或結束
         if (view === 'scanning' || view === 'spelling') {
-          const newQueue = queue.filter(w => w.en.trim().toLowerCase() !== wordToDelete.en.trim().toLowerCase());
-          setQueue(newQueue);
           if (newQueue.length === 0) {
             setView('summary');
           } else {
