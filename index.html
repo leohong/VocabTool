@@ -87,7 +87,7 @@
       // ----------------------------------------
       // --- 0. 版本管理常數 (三碼版本號規則) ---
       // ----------------------------------------
-      const APP_VERSION = "1.2.16"; 
+      const APP_VERSION = "1.2.17"; 
       const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
 
       // ----------------------------------------
@@ -1497,7 +1497,9 @@
         if (historyList.length === 0) return alert("歷史殿堂目前空空如也，無需匯出。");
         let content = `=== 歷史殿堂單字個人紀錄 ===\n\n`;
         historyList.forEach((m, idx) => {
-          content += `${idx + 1}. 錯誤次數: ${m.mistakesCount}次 | [${m.data.pos}] ${m.data.en} --> ${m.data.zh}${m.data.eg ? ` || ${m.data.eg}` : ''}\n`;
+          const vocabWord = vocabList.find(w => w.en === m.data.en);
+          const currentEg = (vocabWord && vocabWord.eg) || m.data.eg || '';
+          content += `${idx + 1}. 錯誤次數: ${m.mistakesCount}次 | [${m.data.pos}] ${m.data.en} --> ${m.data.zh}${currentEg ? ` || ${currentEg}` : ''}\n`;
         });
         downloadFile(`歷史殿堂_${dbName}.txt`, content, 'text/plain');
       };
@@ -1527,6 +1529,13 @@
                   const parts = zh.split(' || ');
                   zh = parts[0].trim();
                   eg = parts[1].trim();
+                }
+                
+                if (!eg) {
+                  const vocabWord = vocabList.find(w => w.en === wordKey);
+                  if (vocabWord && vocabWord.eg) {
+                    eg = vocabWord.eg;
+                  }
                 }
 
                 const wordObj = { en: wordKey, zh: zh, pos: pos.trim(), eg: eg };
