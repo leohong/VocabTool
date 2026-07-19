@@ -87,7 +87,7 @@
       // ----------------------------------------
       // --- 0. 版本管理常數 (三碼版本號規則) ---
       // ----------------------------------------
-      const APP_VERSION = "1.2.12"; 
+      const APP_VERSION = "1.2.13"; 
       const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
 
       // ----------------------------------------
@@ -867,11 +867,14 @@
                 if (signal.aborted) break;
                 await delayAsync(300, signal);
               }
+              // 念例句時，中文不必念 (Skip Chinese translation pronunciation)
+              /*
               if (egZh) {
                 await speakAsync(egZh, 'zh-TW', settings.zhVoiceName, signal);
                 if (signal.aborted) break;
                 await delayAsync(500, signal);
               }
+              */
             }
 
             // 5. 停頓
