@@ -87,7 +87,7 @@
       // ----------------------------------------
       // --- 0. 版本管理常數 (三碼版本號規則) ---
       // ----------------------------------------
-      const APP_VERSION = "1.2.17"; 
+      const APP_VERSION = "1.2.18"; 
       const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
 
       // ----------------------------------------
@@ -1559,22 +1559,11 @@
               return;
             }
  
-            const importAsNewDB = window.confirm(
-              `偵測到「歷史殿堂字庫檔案」（共 ${count} 字）。\n\n請問您是否要將這些單字轉為目前字庫【${dbName}】的「全新單字庫」，重新開始練習？\n\n▶ 按【確定】：覆寫目前字庫，並將學習進度「完全重設」，重新背這批單字。\n▶ 按【取消】：僅匯入作為目前的「歷史殿堂」紀錄 (供幽靈突襲用)。`
-            );
- 
-            if (importAsNewDB) {
-               setVocabList(importedVocab);
-               localStorage.setItem(`vocab_customVocab_${dbName}`, JSON.stringify(importedVocab));
-               setState(defaultState);
-               alert(`成功將歷史殿堂單字轉為全新字庫！已載入 ${importedVocab.length} 個單字，進度已重設，可以重新開始特訓囉！`);
-            } else {
-               setState(prev => {
-                 const newHistory = { ...prev.historicalMistakes, ...importedHistory };
-                 return { ...prev, historicalMistakes: newHistory };
-               });
-               alert(`成功匯入 ${count} 個單字至目前的【🏛️ 歷史殿堂】中！`);
-            }
+            setState(prev => {
+              const newHistory = { ...prev.historicalMistakes, ...importedHistory };
+              return { ...prev, historicalMistakes: newHistory };
+            });
+            alert(`成功將 ${count} 個單字匯入至目前的【🏛️ 歷史殿堂】中！`);
           } else {
             alert("檔案格式不符，請確認是正確的歷史殿堂備份 TXT 檔案。");
           }
@@ -1615,7 +1604,37 @@
               localStorage.setItem(`vocab_customVocab_${dbName}`, JSON.stringify(importedVocab));
               alert(`字典匯入成功！共 ${importedVocab.length} 字。`);
             }
-          } else { alert("無法識別檔案格式，請確認是正確的字庫備份 TXT 檔案。"); }
+          } else if (text.includes("歷史殿堂單字個人紀錄")) {
+            const lines = text.split("\n");
+            const importedVocab = [];
+            lines.forEach(line => {
+              const match = line.match(/錯誤(?:次數)?[:\s]*\d+次\s*\|\s*\[(.*?)\]\s*(.+?)\s*-->\s*(.*)/);
+              if (match) {
+                const pos = match[1].trim();
+                const en = match[2].trim();
+                const rest = match[3].trim();
+                
+                let zh = rest;
+                let eg = '';
+                if (rest.includes(' || ')) {
+                  const parts = rest.split(' || ');
+                  zh = parts[0].trim();
+                  eg = parts[1].trim();
+                }
+                importedVocab.push({ en, zh, pos, eg });
+              }
+            });
+            if (importedVocab.length > 0) {
+              setVocabList(importedVocab);
+              localStorage.setItem(`vocab_customVocab_${dbName}`, JSON.stringify(importedVocab));
+              setState(defaultState);
+              alert(`成功將歷史殿堂單字轉為全新字庫！已載入 ${importedVocab.length} 個單字，進度已重設，可以重新開始特訓囉！`);
+            } else {
+              alert("無法識別檔案內容，請確認是正確的歷史殿堂備份 TXT 檔案。");
+            }
+          } else {
+            alert("無法識別檔案格式，請確認是正確的字庫備份或歷史殿堂備份 TXT 檔案。");
+          }
         };
         reader.readAsText(file);
         e.target.value = "";
