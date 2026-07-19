@@ -9,3 +9,6 @@
   - When major or minor features are added, manually increment `X` or `Y` and reset `Z` to `0` or `1`.
 
 - **Change Approval**: Always present the implementation plan/proposal and get the user's explicit consent in the chat BEFORE making any code modifications. If the user only asks for explanations or troubleshooting reasons, do NOT modify the codebase.
+
+- **主程式變更測試規則 (Main Program Test Rule)**: 若主程式 `index.html` 沒有任何程式碼變更（例如僅修改規格書或文件檔案），則不需執行自動化測試。
+
