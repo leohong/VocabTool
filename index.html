@@ -87,7 +87,7 @@
       // ----------------------------------------
       // --- 0. 版本管理常數 (三碼版本號規則) ---
       // ----------------------------------------
-      const APP_VERSION = "1.2.11"; 
+      const APP_VERSION = "1.2.12"; 
       const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
 
       // ----------------------------------------
@@ -2045,7 +2045,7 @@
                           const isNotSpelledYet = audioSubStep === 'spelling' && sIdx !== -1 && sIdx > activeSpellingChar;
 
                           // 決定顯示的字元 (盲聽模式下未拼讀的字元顯示為圓點)
-                          let displayChar = char.toUpperCase();
+                          let displayChar = char;
                           if (blindMode) {
                             if (audioSubStep === 'spelling') {
                               if (isNotSpelledYet || sIdx === -1) {
