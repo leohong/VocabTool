@@ -87,7 +87,7 @@
       // ----------------------------------------
       // --- 0. 版本管理常數 (三碼版本號規則) ---
       // ----------------------------------------
-      const APP_VERSION = "1.2.9"; 
+      const APP_VERSION = "1.2.10"; 
       const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
 
       // ----------------------------------------
@@ -1483,20 +1483,22 @@
 
       const exportDictionaryTXT = () => {
         let content = "=== 特訓完整字庫 ===\n\n";
-        vocabList.forEach((w, idx) => { content += `${idx + 1}. [${w.pos}] ${w.en} --> ${w.zh}\n`; });
+        vocabList.forEach((w, idx) => {
+          content += `${idx + 1}. [${w.pos}] ${w.en} --> ${w.zh}${w.eg ? ` || ${w.eg}` : ''}\n`;
+        });
         downloadFile(`字典_${dbName}.txt`, content, 'text/plain');
       };
-
+ 
       const exportHistoryTXT = () => {
         const historyList = Object.values(state.historicalMistakes);
         if (historyList.length === 0) return alert("歷史殿堂目前空空如也，無需匯出。");
         let content = `=== 歷史殿堂單字個人紀錄 ===\n\n`;
         historyList.forEach((m, idx) => {
-          content += `${idx + 1}. 錯誤次數: ${m.mistakesCount}次 | [${m.data.pos}] ${m.data.en} --> ${m.data.zh}\n`;
+          content += `${idx + 1}. 錯誤次數: ${m.mistakesCount}次 | [${m.data.pos}] ${m.data.en} --> ${m.data.zh}${m.data.eg ? ` || ${m.data.eg}` : ''}\n`;
         });
         downloadFile(`歷史殿堂_${dbName}.txt`, content, 'text/plain');
       };
-
+ 
       const handleImportHistoryTXT = (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -1508,14 +1510,23 @@
             const importedVocab = [];
             const importedHistory = {};
             let count = 0;
-
+ 
             lines.forEach(line => {
               const match = line.match(/錯誤(?:次數)?[:\s]*(\d+)次\s*\|\s*\[(.*?)\]\s*(.+?)\s*-->\s*(.*)/);
               if (match) {
-                const [_, mistakesCount, pos, en, zh] = match;
+                const [_, mistakesCount, pos, en, rest] = match;
                 const wordKey = en.trim();
                 const mCount = parseInt(mistakesCount, 10);
-                const wordObj = { en: wordKey, zh: zh.trim(), pos: pos.trim() };
+                
+                let zh = rest.trim();
+                let eg = '';
+                if (zh.includes(' || ')) {
+                  const parts = zh.split(' || ');
+                  zh = parts[0].trim();
+                  eg = parts[1].trim();
+                }
+
+                const wordObj = { en: wordKey, zh: zh, pos: pos.trim(), eg: eg };
                 
                 importedVocab.push(wordObj);
                 importedHistory[wordKey] = {
@@ -1530,27 +1541,27 @@
                 count++;
               }
             });
-
+ 
             if (count === 0) {
               alert("未偵測到任何有效的歷史殿堂單字格式。");
               return;
             }
-
+ 
             const importAsNewDB = window.confirm(
               `偵測到「歷史殿堂字庫檔案」（共 ${count} 字）。\n\n請問您是否要將這些單字轉為目前字庫【${dbName}】的「全新單字庫」，重新開始練習？\n\n▶ 按【確定】：覆寫目前字庫，並將學習進度「完全重設」，重新背這批單字。\n▶ 按【取消】：僅匯入作為目前的「歷史殿堂」紀錄 (供幽靈突襲用)。`
             );
-
+ 
             if (importAsNewDB) {
-              setVocabList(importedVocab);
-              localStorage.setItem(`vocab_customVocab_${dbName}`, JSON.stringify(importedVocab));
-              setState(defaultState);
-              alert(`成功將歷史殿堂單字轉為全新字庫！已載入 ${importedVocab.length} 個單字，進度已重設，可以重新開始特訓囉！`);
+               setVocabList(importedVocab);
+               localStorage.setItem(`vocab_customVocab_${dbName}`, JSON.stringify(importedVocab));
+               setState(defaultState);
+               alert(`成功將歷史殿堂單字轉為全新字庫！已載入 ${importedVocab.length} 個單字，進度已重設，可以重新開始特訓囉！`);
             } else {
-              setState(prev => {
-                const newHistory = { ...prev.historicalMistakes, ...importedHistory };
-                return { ...prev, historicalMistakes: newHistory };
-              });
-              alert(`成功匯入 ${count} 個單字至目前的【🏛️ 歷史殿堂】中！`);
+               setState(prev => {
+                 const newHistory = { ...prev.historicalMistakes, ...importedHistory };
+                 return { ...prev, historicalMistakes: newHistory };
+               });
+               alert(`成功匯入 ${count} 個單字至目前的【🏛️ 歷史殿堂】中！`);
             }
           } else {
             alert("檔案格式不符，請確認是正確的歷史殿堂備份 TXT 檔案。");
@@ -1559,7 +1570,7 @@
         reader.readAsText(file);
         e.target.value = "";
       };
-
+ 
       const handleImportTXT = (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -1571,7 +1582,21 @@
             const importedVocab = [];
             lines.forEach(line => {
               const match = line.match(/\d+\.\s*\[(.*?)\]\s*(.+?)\s*-->\s*(.*)/);
-              if (match) importedVocab.push({ en: match[2].trim(), zh: match[3].trim(), pos: match[1].trim() });
+              if (match) {
+                const pos = match[1].trim();
+                const en = match[2].trim();
+                const rest = match[3].trim();
+                
+                let zh = rest;
+                let eg = '';
+                if (rest.includes(' || ')) {
+                  const parts = rest.split(' || ');
+                  zh = parts[0].trim();
+                  eg = parts[1].trim();
+                }
+                
+                importedVocab.push({ en, zh, pos, eg });
+              }
             });
             if (importedVocab.length > 0) {
               setVocabList(importedVocab);
