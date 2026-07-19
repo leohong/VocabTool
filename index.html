@@ -87,7 +87,7 @@
       // ----------------------------------------
       // --- 0. 版本管理常數 (三碼版本號規則) ---
       // ----------------------------------------
-      const APP_VERSION = "1.2.13"; 
+      const APP_VERSION = "1.2.15"; 
       const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
 
       // ----------------------------------------
@@ -858,9 +858,9 @@
             if (settings.readExample && word.eg) {
               setAudioSubStep('example');
               setAudioStatusText(`朗讀例句...`);
-              const parts = word.eg.split(/\s*(\([^)]+\))\s*$/);
+              const parts = word.eg.split(/\s*([（(][^）)]+[）)])\s*$/);
               const egEn = parts[0] ? parts[0].trim() : '';
-              const egZh = parts[1] ? parts[1].replace(/[()]/g, '').trim() : '';
+              const egZh = parts[1] ? parts[1].replace(/[（()）]/g, '').trim() : '';
 
               if (egEn) {
                 await speakAsync(egEn, 'en-US', settings.enVoiceName, signal);

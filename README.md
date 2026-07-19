@@ -219,3 +219,34 @@ This project is licensed under the MIT License - see the LICENSE file for detail
    kill -9 19092
    ```
 
+---
+
+## 🧪 自動化測試與除錯 (Testing & Verification)
+
+本專案配置了基於 Selenium WebDriver 的 Headless Chrome 自動化功能測試器 (Function Testers)，相關腳本均位於 `test/` 目錄中。
+
+### 📦 測試檔案說明 (功能測試器)
+*   **[test_import_dictionary.py](file:///g:/我的雲端硬碟/個人資料夾/學習資料/英語/背單字工具/test/test_import_dictionary.py)**：測試外部 `.txt` 字典檔案之匯入與解析邏輯。
+*   **[test_audio_casing_rules.py](file:///g:/我的雲端硬碟/個人資料夾/學習資料/英語/背單字工具/test/test_audio_casing_rules.py)**：測試聽寫播放器的大小寫保留 (casing retention) 及中文翻譯去括號朗讀規則。
+*   **[test_audio_player.py](file:///g:/我的雲端硬碟/個人資料夾/學習資料/英語/背單字工具/test/test_audio_player.py)**：測試聽讀播放器的核心控制、播放/暫停及範圍選擇。
+*   **[test_delete_word.py](file:///g:/我的雲端硬碟/個人資料夾/學習資料/英語/背單字工具/test/test_delete_word.py)**：測試今日特訓中刪除單字後的狀態與流程流轉。
+
+### 🚀 執行測試指令
+在執行測試前，請確保已安裝 `selenium`（若需要），並在根目錄下單獨執行所需的功能測試器。
+各測試器均經過極簡化調整，**執行成功時僅會印出一行 `[SUCCESS]` 結果**，以將 Token 消耗降至最低：
+```bash
+python test/test_import_dictionary.py
+python test/test_audio_casing_rules.py
+python test/test_audio_player.py
+python test/test_delete_word.py
+```
+
+### 💡 測試 Token 節省最佳實踐
+1.  **成功時極簡日誌**：測試成功時僅印出 `[SUCCESS] <測試名稱> passed.`，沒有任何冗長的進度 logs。
+2.  **不輸出 DOM 至控制台**：當測試失敗時，**絕對不會**在控制台中列印 `driver.page_source` 或 HTML 結構。
+3.  **本地診斷檔案儲存**：
+    *   失敗時的網頁 DOM 樹會自動寫入本地檔案：**`test/failure_source.html`**。
+    *   失敗截圖會自動存於與測試同目錄下（如 `test_delete_word_failure.png`）。
+    *   請直接在本地瀏覽器或編輯器中查看上述診斷檔案，切勿將其 print 至控制台。
+
+
