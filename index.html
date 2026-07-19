@@ -87,7 +87,7 @@
       // ----------------------------------------
       // --- 0. 版本管理常數 (三碼版本號規則) ---
       // ----------------------------------------
-      const APP_VERSION = "1.2.19"; 
+      const APP_VERSION = "1.2.20"; 
       const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
 
       // ----------------------------------------
@@ -1604,8 +1604,35 @@
               localStorage.setItem(`vocab_customVocab_${dbName}`, JSON.stringify(importedVocab));
               alert(`字典匯入成功！共 ${importedVocab.length} 字。`);
             }
+          } else if (text.includes("歷史殿堂單字個人紀錄")) {
+            const lines = text.split("\n");
+            const importedVocab = [];
+            lines.forEach(line => {
+              const match = line.match(/錯誤(?:次數)?[:\s]*\d+次\s*\|\s*\[(.*?)\]\s*(.+?)\s*-->\s*(.*)/);
+              if (match) {
+                const pos = match[1].trim();
+                const en = match[2].trim();
+                const rest = match[3].trim();
+                
+                let zh = rest;
+                let eg = '';
+                if (rest.includes(' || ')) {
+                  const parts = rest.split(' || ');
+                  zh = parts[0].trim();
+                  eg = parts[1].trim();
+                }
+                importedVocab.push({ en, zh, pos, eg });
+              }
+            });
+            if (importedVocab.length > 0) {
+              setVocabList(importedVocab);
+              localStorage.setItem(`vocab_customVocab_${dbName}`, JSON.stringify(importedVocab));
+              alert(`成功將歷史殿堂單字匯入為目前字典字庫！共 ${importedVocab.length} 字。\n（此操作未重置當前學習天數與進度。若想從第一天起重新特訓這批單字，建議先點擊「➕庫」建立新字庫後再匯入。）`);
+            } else {
+              alert("無法識別檔案內容，請確認是正確的歷史殿堂備份 TXT 檔案。");
+            }
           } else {
-            alert("無法識別檔案格式，請確認是正確的字庫備份 TXT 檔案。");
+            alert("無法識別檔案格式，請確認是正確的字庫備份或歷史殿堂備份 TXT 檔案。");
           }
         };
         reader.readAsText(file);
