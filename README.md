@@ -15,7 +15,8 @@
 
 ### 💻 步驟 1：開啟系統
 *   **線上即用 (推薦)**：直接造訪 **[線上特訓系統網址](https://leohong.github.io/VocabTool/)**。
-*   **本地執行**：將本專案 clone 至本地，或單獨下載 `index.html`，並在瀏覽器中雙擊開啟。
+*   **本地伺服器執行 (強烈推薦)**：雙擊執行專案根目錄的 `start_dev_server.bat`，它會自動檢查並關閉之前卡死的伺服器行程，並在新視窗中啟動本機伺服器。啟動後直接在瀏覽器造訪 **[http://localhost:8001](http://localhost:8001)**。
+*   **雙擊直接開啟**：直接雙擊 `index.html` 以瀏覽器開啟（注意：部分功能如 API 字典查詢，在部分瀏覽器的安全限制下可能會被阻擋，故強烈推薦使用上面的伺服器啟動器）。
 
 ### 📥 步驟 2：下載官方單字庫
 系統首頁未載入大量單字，建議先下載以下官方預載字庫檔：
@@ -167,3 +168,54 @@ This project is licensed under the MIT License - see the LICENSE file for detail
     *   **發音與語速最佳化**：中文發音預設自動選取 Traditional Chinese 台灣國語/香港發音人；字母發音速率保持與單字讀速同步。
     *   **眼睛關閉盲聽遮蔽**：一鍵開啟盲聽模式，遮蓋單字拼寫與中文釋義，拼讀字母時網頁上會有同步高亮逐字放大的 Premium 視覺微動畫，大幅提升聽寫專注度。
     *   **防鎖屏休眠**：整合 Wake Lock API，防止行動裝置背景播放時螢幕鎖定導致中斷。
+
+---
+
+## 🛠️ 開發伺服器卡死排查與自救 (Troubleshooting & Self-Help)
+
+在本地進行開發或使用本機網頁伺服器（預設 Port `8001`）時，偶爾會因為舊的 Python 背景行程未正常釋放，導致網頁在瀏覽器中開啟時「卡住不動」或「轉圈圈」。
+
+### 🛡️ 預防方案 (一鍵修復)
+我們提供了一個自動化腳本。當您遇到卡住或要開啟伺服器時，請直接執行：
+* 👉 **`start_dev_server.bat`** (Windows 批次檔)
+* 它會自動執行以下步驟：
+  1. 檢查 Port `8001` 是否已被佔用。
+  2. 若有舊的卡死伺服器，自動對其發送 `taskkill` 強制關閉。
+  3. 重新開啟一個獨立的 CMD 視窗執行新的 Python 伺服器。
+
+---
+
+### 🚨 手動自救指南
+如果您想手動排查並修復此問題，請根據您的系統類型使用以下指令：
+
+#### 💻 Windows 環境 (PowerShell)
+1. **檢查 Port 8001 佔用狀況**（找出 PID 行程代碼）：
+   ```powershell
+   Get-NetTCPConnection -LocalPort 8001 -ErrorAction SilentlyContinue | Select-Object OwningProcess
+   ```
+2. **強制結束卡死的行程**（假設查出來的 PID 為 `19092`）：
+   ```powershell
+   Stop-Process -Id 19092 -Force
+   ```
+
+#### 💻 Windows 環境 (CMD / 傳統命令提示字元)
+1. **檢查 Port 8001 佔用狀況**：
+   ```cmd
+   netstat -aon | findstr :8001 | findstr LISTENING
+   ```
+   *(輸出的最後一欄即為行程 PID)*
+2. **強制結束卡死的行程**（假設 PID 為 `19092`）：
+   ```cmd
+   taskkill /F /PID 19092
+   ```
+
+#### 🍎 macOS / Linux 環境
+1. **檢查 Port 8001 佔用狀況**：
+   ```bash
+   lsof -i :8001
+   ```
+2. **強制結束卡死的行程**（假設 PID 為 `19092`）：
+   ```bash
+   kill -9 19092
+   ```
+
