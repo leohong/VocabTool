@@ -87,7 +87,7 @@
       // ----------------------------------------
       // --- 0. 版本管理常數 (三碼版本號規則) ---
       // ----------------------------------------
-      const APP_VERSION = "1.2.20"; 
+      const APP_VERSION = "1.2.21"; 
       const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
 
       // ----------------------------------------
@@ -1625,9 +1625,14 @@
               }
             });
             if (importedVocab.length > 0) {
-              setVocabList(importedVocab);
-              localStorage.setItem(`vocab_customVocab_${dbName}`, JSON.stringify(importedVocab));
-              alert(`成功將歷史殿堂單字匯入為目前字典字庫！共 ${importedVocab.length} 字。\n（此操作未重置當前學習天數與進度。若想從第一天起重新特訓這批單字，建議先點擊「➕庫」建立新字庫後再匯入。）`);
+              const existingMap = new Map(vocabList.map(w => [w.en.trim().toLowerCase(), w]));
+              importedVocab.forEach(w => {
+                existingMap.set(w.en.trim().toLowerCase(), w);
+              });
+              const mergedVocab = Array.from(existingMap.values());
+              setVocabList(mergedVocab);
+              localStorage.setItem(`vocab_customVocab_${dbName}`, JSON.stringify(mergedVocab));
+              alert(`成功將歷史殿堂單字追加至目前字典字庫！共追加 ${importedVocab.length} 字（去重後字庫總計 ${mergedVocab.length} 字）。\n（此操作未重置當前學習天數與進度。）`);
             } else {
               alert("無法識別檔案內容，請確認是正確的歷史殿堂備份 TXT 檔案。");
             }
