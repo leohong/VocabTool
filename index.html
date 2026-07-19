@@ -87,7 +87,7 @@
       // ----------------------------------------
       // --- 0. 版本管理常數 (三碼版本號規則) ---
       // ----------------------------------------
-      const APP_VERSION = "1.2.8"; 
+      const APP_VERSION = "1.2.9"; 
       const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
 
       // ----------------------------------------
@@ -1997,39 +1997,74 @@
                       {audioQueue[currentAudioIndex]?.pos}
                     </span>
 
-                    {/* 單字拼寫展示 */}
-                    <div className="min-h-[80px] flex items-center justify-center flex-wrap gap-1.5 mb-4">
-                      {blindMode ? (
-                        <div className="text-slate-500 tracking-widest font-mono text-3xl font-black opacity-80">
-                          {Array(audioQueue[currentAudioIndex]?.en.length).fill('•').join(' ')}
-                        </div>
-                      ) : (
-                        <h2 className="text-4xl sm:text-5xl font-black text-slate-100 tracking-tight break-all font-mono">
-                          {audioQueue[currentAudioIndex]?.en}
-                        </h2>
-                      )}
-                    </div>
+                    {/* 單字拼寫與高亮展示 */}
+                    <div className="min-h-[80px] flex items-center justify-center flex-wrap gap-1.5 mb-4 select-none">
+                      {(() => {
+                        const wordEn = audioQueue[currentAudioIndex]?.en || '';
+                        const spellingIndices = [];
+                        let spellIdx = 0;
+                        for (let i = 0; i < wordEn.length; i++) {
+                          const char = wordEn[i].toLowerCase();
+                          if (/[a-z']/.test(char)) {
+                            spellingIndices.push(spellIdx);
+                            spellIdx++;
+                          } else {
+                            spellingIndices.push(-1);
+                          }
+                        }
 
-                    {/* 拼字動態高亮展示區域 */}
-                    {audioSubStep === 'spelling' && (
-                      <div className="flex justify-center flex-wrap gap-2 py-1 px-4 bg-slate-900/40 rounded-2xl border border-slate-800/40 max-w-sm mx-auto mb-4">
-                        {audioQueue[currentAudioIndex]?.en.toLowerCase().replace(/[^a-z']/g, '').split('').map((char, index) => {
-                          const isActive = index === activeSpellingChar;
+                        return wordEn.split('').map((char, index) => {
+                          const sIdx = spellingIndices[index];
+                          const isActive = audioSubStep === 'spelling' && sIdx === activeSpellingChar;
+                          const isSpelled = audioSubStep === 'spelling' && sIdx !== -1 && sIdx < activeSpellingChar;
+                          const isNotSpelledYet = audioSubStep === 'spelling' && sIdx !== -1 && sIdx > activeSpellingChar;
+
+                          // 決定顯示的字元 (盲聽模式下未拼讀的字元顯示為圓點)
+                          let displayChar = char.toUpperCase();
+                          if (blindMode) {
+                            if (audioSubStep === 'spelling') {
+                              if (isNotSpelledYet || sIdx === -1) {
+                                displayChar = char === ' ' ? '\u00A0' : '•';
+                              }
+                            } else {
+                              displayChar = char === ' ' ? '\u00A0' : '•';
+                            }
+                          } else {
+                            if (char === ' ') {
+                              displayChar = '\u00A0';
+                            }
+                          }
+
+                          // 決定樣式類別
+                          let charClass = "text-4xl sm:text-5xl font-black font-mono transition-all duration-150 ";
+                          if (audioSubStep === 'spelling') {
+                            if (isActive) {
+                              charClass += "text-indigo-400 scale-125 drop-shadow-[0_0_10px_rgba(129,140,248,0.8)]";
+                            } else if (isSpelled) {
+                              charClass += "text-slate-100";
+                            } else {
+                              charClass += "text-slate-600";
+                            }
+                          } else {
+                            if (blindMode) {
+                              charClass += "text-slate-500 opacity-80";
+                            } else {
+                              charClass += "text-slate-100";
+                            }
+                          }
+
                           return (
                             <span
                               key={index}
-                              className={`text-xl sm:text-2xl font-black font-mono transition-all duration-150 ${
-                                isActive
-                                  ? 'text-indigo-400 scale-125 drop-shadow-[0_0_10px_rgba(129,140,248,0.8)]'
-                                  : 'text-slate-600'
-                              }`}
+                              className={charClass}
+                              style={{ display: 'inline-block' }}
                             >
-                              {char.toUpperCase()}
+                              {displayChar}
                             </span>
                           );
-                        })}
-                      </div>
-                    )}
+                        });
+                      })()}
+                    </div>
 
                     {/* 中文釋義 */}
                     <div className="min-h-[36px] mt-2">
