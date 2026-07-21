@@ -87,7 +87,7 @@
       // ----------------------------------------
       // --- 0. 版本管理常數 (三碼版本號規則) ---
       // ----------------------------------------
-      const APP_VERSION = "1.2.21"; 
+      const APP_VERSION = "1.3.1"; 
       const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
 
       // ----------------------------------------
@@ -117,6 +117,10 @@
       const [speechRate, setSpeechRate] = useState(() => {
         const saved = localStorage.getItem('vocab_speechRate');
         return saved ? parseFloat(saved) : 0.8;
+      });
+      const [speechEnabled, setSpeechEnabled] = useState(() => {
+        const saved = localStorage.getItem('vocab_speechEnabled');
+        return saved ? saved === 'true' : true;
       });
 
       const [view, setView] = useState('dashboard');
@@ -646,6 +650,10 @@
         localStorage.setItem('vocab_speechRate', speechRate.toString());
       }, [speechRate]);
 
+      useEffect(() => {
+        localStorage.setItem('vocab_speechEnabled', speechEnabled.toString());
+      }, [speechEnabled]);
+
       // 自動暫存
       useEffect(() => {
         if (view !== 'dashboard' && view !== 'summary') {
@@ -658,8 +666,9 @@
 
 
       // --- 發音 ---
-      const speak = (text) => {
+      const speak = (text, isManual = false) => {
         if ('speechSynthesis' in window) {
+          if (!isManual && !speechEnabled) return;
           window.speechSynthesis.cancel();
           const utterance = new SpeechSynthesisUtterance(text);
           utterance.lang = 'en-US';
@@ -1333,7 +1342,8 @@
           global: {
             dbList,
             currentDB: dbName,
-            speechRate
+            speechRate,
+            speechEnabled
           },
           // 保持與舊版本的向後相容性
           dbName,
@@ -1395,10 +1405,12 @@
                 const importedDbList = backupGlobal.dbList || ['vocab_2000', 'vocab_7000'];
                 const importedCurrentDB = backupGlobal.currentDB || 'vocab_2000';
                 const importedSpeechRate = backupGlobal.speechRate || 0.8;
+                const importedSpeechEnabled = backupGlobal.speechEnabled !== undefined ? backupGlobal.speechEnabled : true;
 
                 localStorage.setItem('vocab_dbList', JSON.stringify(importedDbList));
                 localStorage.setItem('vocab_currentDB', importedCurrentDB);
                 localStorage.setItem('vocab_speechRate', importedSpeechRate.toString());
+                localStorage.setItem('vocab_speechEnabled', importedSpeechEnabled.toString());
 
                 // 2. 還原各資料庫
                 Object.keys(data.allDatabases).forEach(db => {
@@ -1420,6 +1432,7 @@
                 // 3. 更新 React 狀態
                 setDbList(importedDbList);
                 setSpeechRate(importedSpeechRate);
+                setSpeechEnabled(importedSpeechEnabled);
                 setDbName(importedCurrentDB);
 
                 // 如果導入的 dbName 剛好和目前的相同，我們手動更新狀態
@@ -1813,6 +1826,21 @@
                       </button>
                     </div>
                   </div>
+                  <div className="h-px bg-slate-700/50 my-1"></div>
+                  <div className="flex justify-between items-center gap-2">
+                    <span className="text-xs font-bold text-slate-400 flex items-center gap-1">📢 自動發音:</span>
+                    <button
+                      type="button"
+                      onClick={() => setSpeechEnabled(!speechEnabled)}
+                      className={`px-3 py-1 text-xs font-bold rounded-lg transition-all duration-200 select-none ${
+                        speechEnabled 
+                          ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_0_10px_rgba(99,102,241,0.3)]' 
+                          : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
+                      }`}
+                    >
+                      {speechEnabled ? '已開啟 ON' : '已關閉 OFF'}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="bg-slate-800 p-3 rounded-xl shadow-md border border-slate-700 mt-auto">
@@ -1863,7 +1891,7 @@
                     >
                       <IconBook />
                     </button>
-                    <button type="button" onClick={() => speak(currentWord.en)} className="p-3 bg-slate-700 hover:bg-indigo-900 text-slate-300 rounded-full transition-colors" title="播放發音"><IconVolume /></button>
+                    <button type="button" onClick={() => speak(currentWord.en, true)} className="p-3 bg-slate-700 hover:bg-indigo-900 text-slate-300 rounded-full transition-colors" title="播放發音"><IconVolume /></button>
                   </div>
 
                   {/* 編輯與刪除按鈕 */}
@@ -1909,7 +1937,7 @@
                 </div>
                 <div className={`bg-slate-800 w-full rounded-3xl shadow-2xl border border-slate-700 text-center relative transition-all duration-200 ${isInputFocused ? 'p-4 mb-2' : 'p-8 mb-6'}`}>
                   <div className="absolute top-4 right-4 flex gap-2 z-10">
-                    <button type="button" onClick={() => speak(currentWord.en)} className="p-2 bg-slate-700 hover:bg-indigo-900 text-slate-400 rounded-full transition-colors" title="播放發音"><IconVolume /></button>
+                    <button type="button" onClick={() => speak(currentWord.en, true)} className="p-2 bg-slate-700 hover:bg-indigo-900 text-slate-400 rounded-full transition-colors" title="播放發音"><IconVolume /></button>
                   </div>
 
                   {/* 編輯與刪除按鈕 */}
@@ -2454,7 +2482,7 @@
                     getDailyWords().baseWords.map((word, idx) => (
                       <div key={idx} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-xl border border-slate-700/60 gap-3 group">
                         <div className="flex items-center gap-3 min-w-0">
-                          <button onClick={() => speak(word.en)} className="p-2 bg-slate-800 text-indigo-400 rounded-lg border border-slate-700 flex-shrink-0"><IconVolume /></button>
+                          <button onClick={() => speak(word.en, true)} className="p-2 bg-slate-800 text-indigo-400 rounded-lg border border-slate-700 flex-shrink-0"><IconVolume /></button>
                           <div className="min-w-0">
                             <div className="flex items-baseline gap-2">
                               <span className="font-bold font-mono text-base text-slate-200 truncate">{word.en}</span>
@@ -2509,7 +2537,7 @@
                       return (
                         <div key={item.data.en} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-slate-700/60 gap-4 group">
                           <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <button onClick={() => speak(item.data.en)} className="p-2 bg-slate-800 text-indigo-400 rounded-lg border border-slate-700 flex-shrink-0"><IconVolume /></button>
+                            <button onClick={() => speak(item.data.en, true)} className="p-2 bg-slate-800 text-indigo-400 rounded-lg border border-slate-700 flex-shrink-0"><IconVolume /></button>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-baseline gap-2">
                                 <span className="font-bold font-mono text-lg text-slate-200 truncate">{item.data.en}</span>
@@ -2592,7 +2620,7 @@
                       return (
                         <div key={item.data.en} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-slate-700/60 gap-4">
                           <div className="flex items-center gap-3">
-                            <button onClick={() => speak(item.data.en)} className="p-2 bg-slate-800 text-indigo-400 rounded-lg border border-slate-700"><IconVolume /></button>
+                            <button onClick={() => speak(item.data.en, true)} className="p-2 bg-slate-800 text-indigo-400 rounded-lg border border-slate-700"><IconVolume /></button>
                             <div>
                               <div className="flex items-baseline gap-2">
                                 <span className="font-bold font-mono text-lg text-amber-100">{item.data.en}</span>
@@ -2648,7 +2676,7 @@
                         {searchQuery.trim() && (
                           <button
                             type="button"
-                            onClick={() => speak(searchQuery.trim())}
+                            onClick={() => speak(searchQuery.trim(), true)}
                             className="absolute right-3 top-1/2 -translate-y-1/2 p-1 bg-slate-800 hover:bg-slate-700 text-indigo-400 hover:text-indigo-300 rounded-lg transition-colors text-sm"
                             title="直接發音"
                           >
@@ -2712,7 +2740,7 @@
                                 {!isDictHintMode && (
                                   <button
                                     type="button"
-                                    onClick={() => speak(item.word)}
+                                    onClick={() => speak(item.word, true)}
                                     className="p-1 bg-slate-800 hover:bg-slate-700 text-indigo-400 hover:text-indigo-300 rounded-lg transition-colors text-xs flex items-center gap-1 shrink-0"
                                     title="發音"
                                   >
@@ -2765,7 +2793,7 @@
                                 {formEn && (
                                   <button
                                     type="button"
-                                    onClick={() => speak(formEn)}
+                                    onClick={() => speak(formEn, true)}
                                     className="text-indigo-400 hover:text-indigo-300 text-[10px] font-bold flex items-center gap-0.5"
                                     title="發音"
                                   >
@@ -2922,7 +2950,7 @@
                           {paginated.map((word) => (
                             <div key={word.originalIdx} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-xl border border-slate-700/60 gap-3 group">
                               <div className="flex items-center gap-3 min-w-0">
-                                <button onClick={() => speak(word.en)} className="p-2 bg-slate-800 text-indigo-400 rounded-lg border border-slate-700 flex-shrink-0"><IconVolume /></button>
+                                <button onClick={() => speak(word.en, true)} className="p-2 bg-slate-800 text-indigo-400 rounded-lg border border-slate-700 flex-shrink-0"><IconVolume /></button>
                                 <div className="min-w-0">
                                   <div className="flex items-baseline gap-2">
                                     <span className="font-bold font-mono text-base text-slate-200 truncate">{word.en}</span>
@@ -2996,7 +3024,7 @@
                       {editEn && (
                         <button
                           type="button"
-                          onClick={() => speak(editEn)}
+                          onClick={() => speak(editEn, true)}
                           className="text-indigo-400 hover:text-indigo-300 text-[10px] font-bold flex items-center gap-0.5"
                           title="發音"
                         >
