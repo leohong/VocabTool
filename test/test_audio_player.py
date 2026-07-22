@@ -173,7 +173,8 @@ def run_tests():
         spoken_texts = [item['text'] for item in speech_history]
         assert any("apple" in t for t in spoken_texts)
         
-        spelling_speeches = [item for item in speech_history if len(item['text']) == 1]
+        spelling_speeches = [item for item in speech_history if ", " in item['text']]
+        assert len(spelling_speeches) > 0, "No spelling utterance found in mock speech history!"
         for item in spelling_speeches:
             assert abs(item['rate'] - 0.8) < 0.01
             

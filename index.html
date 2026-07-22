@@ -87,7 +87,7 @@
       // ----------------------------------------
       // --- 0. 版本管理常數 (三碼版本號規則) ---
       // ----------------------------------------
-      const APP_VERSION = "1.3.3"; 
+      const APP_VERSION = "1.3.4"; 
       const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
 
       // ----------------------------------------
@@ -840,16 +840,40 @@
              setAudioSubStep('spelling');
              setAudioStatusText(`拼讀字母...`);
              const chars = word.en.toLowerCase().replace(/[^a-z']/g, '').split('');
-             for (let cIdx = 0; cIdx < chars.length; cIdx++) {
-               if (signal.aborted) break;
-               setActiveSpellingChar(cIdx);
-               await speakAsync(chars[cIdx], 'en-US', settings.enVoiceName, signal);
-               if (signal.aborted) break;
-               await delayAsync((settings.spellingPause ?? 0) * 1000, signal);
-             }
+             
+             let spellingFinished = false;
+             
+             const delayHighlight = (ms) => {
+               return new Promise((resolve) => {
+                 const start = Date.now();
+                 const timer = setInterval(() => {
+                   if (spellingFinished || signal.aborted || Date.now() - start >= ms) {
+                     clearInterval(timer);
+                     resolve();
+                   }
+                 }, 25);
+               });
+             };
+
+             const runHighlight = async () => {
+               const charDuration = Math.round(480 / (speechRate || 1));
+               for (let cIdx = 0; cIdx < chars.length; cIdx++) {
+                 if (spellingFinished || signal.aborted) break;
+                 setActiveSpellingChar(cIdx);
+                 await delayHighlight(charDuration + (settings.spellingPause ?? 0) * 1000);
+               }
+               setActiveSpellingChar(-1);
+             };
+             
+             runHighlight();
+
+             const spellingStr = chars.join(', ');
+             await speakAsync(spellingStr, 'en-US', settings.enVoiceName, signal);
+             spellingFinished = true;
              setActiveSpellingChar(-1);
-            if (signal.aborted) break;
-            await delayAsync(500, signal);
+             
+             if (signal.aborted) break;
+             await delayAsync(500, signal);
 
             // 3. 唸單字與中文釋義
             setAudioSubStep('translation');
