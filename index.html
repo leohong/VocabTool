@@ -87,7 +87,7 @@
       // ----------------------------------------
       // --- 0. 版本管理常數 (三碼版本號規則) ---
       // ----------------------------------------
-      const APP_VERSION = "1.3.4"; 
+      const APP_VERSION = "1.4.0"; 
       const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
 
       // ----------------------------------------
@@ -128,7 +128,9 @@
       const [showHistoryModal, setShowHistoryModal] = useState(false);
       const [showPreviewModal, setShowPreviewModal] = useState(false);
       const [showAllPreviewModal, setShowAllPreviewModal] = useState(false);
+      const [showImportOptionsModal, setShowImportOptionsModal] = useState(false);
       const [sessionType, setSessionType] = useState('daily');
+      const importTxtInputRef = useRef(null);
 
       // --- 字典與手動加字狀態 ---
       const [showDictModal, setShowDictModal] = useState(false);
@@ -1681,6 +1683,58 @@
         e.target.value = "";
       };
 
+      const loadBuiltInVocab = async (vocabType) => {
+        const titleName = vocabType === '7000' ? '7000 單字庫' : '2000 單字庫';
+        const remoteUrl = vocabType === '7000'
+          ? 'https://raw.githubusercontent.com/leohong/VocabTool/main/7000_%E5%96%AE%E5%AD%97%E5%BA%AB.txt'
+          : 'https://raw.githubusercontent.com/leohong/VocabTool/main/2000_%E5%96%AE%E5%AD%97%E5%BA%AB.txt';
+
+        try {
+          const response = await fetch(remoteUrl);
+          if (!response.ok) {
+            throw new Error(`HTTP Error ${response.status}`);
+          }
+          const text = await response.text();
+          const lines = text.split("\n");
+          const importedVocab = [];
+
+          lines.forEach(line => {
+            const match = line.match(/\d+\.\s*\[(.*?)\]\s*(.+?)\s*-->\s*(.*)/);
+            if (match) {
+              const pos = match[1].trim();
+              const en = match[2].trim();
+              const rest = match[3].trim();
+              
+              let zh = rest;
+              let eg = '';
+              if (rest.includes(' || ')) {
+                const parts = rest.split(' || ');
+                zh = parts[0].trim();
+                eg = parts[1].trim();
+              }
+              
+              importedVocab.push({ en, zh, pos, eg });
+            }
+          });
+
+          if (importedVocab.length > 0) {
+            if (window.confirm(`確定要載入內建的【${titleName}】（共 ${importedVocab.length} 字）並覆蓋目前的字庫【${dbName}】嗎？`)) {
+              setVocabList(importedVocab);
+              localStorage.setItem(`vocab_customVocab_${dbName}`, JSON.stringify(importedVocab));
+              alert(`成功載入內建【${titleName}】！共載入 ${importedVocab.length} 個單字。`);
+            }
+          } else {
+            alert("載入的內建檔案格式無法識別！");
+          }
+        } catch (err) {
+          console.error("Built-in fetch error:", err);
+          alert(`無法從 GitHub 連線取得內建【${titleName}】（可能處於離線狀態）。\n\n將自動為您開啟本機檔案選取器，請選擇您的單字檔進行匯入。`);
+          if (importTxtInputRef.current) {
+            importTxtInputRef.current.click();
+          }
+        }
+      };
+
       const handleAddDB = () => {
         const newName = window.prompt("請輸入全新資料庫代碼 (僅限英文與數字):");
         if (newName && newName.trim()) {
@@ -1872,7 +1926,8 @@
                   <div className="grid grid-cols-3 gap-2">
                     <div className="flex gap-1">
                       <button onClick={exportDictionaryTXT} className="flex-1 py-1.5 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600 transition-colors" title="匯出字典">⬇️ 字</button>
-                      <label className="flex-1 py-1.5 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600 transition-colors cursor-pointer text-center" title="匯入字典">⬆️ 字<input type="file" accept=".txt" onChange={handleImportTXT} className="hidden" /></label>
+                      <button onClick={() => setShowImportOptionsModal(true)} className="flex-1 py-1.5 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600 transition-colors text-center" title="匯入字典">⬆️ 字</button>
+                      <input type="file" ref={importTxtInputRef} accept=".txt" onChange={handleImportTXT} className="hidden" />
                     </div>
                     <div className="flex gap-1">
                       <button onClick={exportHistoryTXT} className="flex-1 py-1.5 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600 transition-colors" title="匯出歷史殿堂">⬇️ 殿</button>
@@ -3122,6 +3177,68 @@
                     <button type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold transition-colors shadow-md">儲存修改</button>
                   </div>
                 </form>
+          {/* --- 選擇匯入來源 Modal (ImportOptionsModal) --- */}
+          {showImportOptionsModal && (
+            <div style={{ zIndex: 100 }} className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease-in-out]">
+              <div className="bg-slate-800 border border-slate-700/80 w-full max-w-sm rounded-3xl shadow-2xl p-6 relative overflow-hidden">
+                <div className="absolute -top-12 -left-12 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl"></div>
+                
+                <h3 className="text-lg font-bold text-slate-100 mb-4 flex items-center gap-2 relative z-10">
+                  📥 選擇匯入來源
+                </h3>
+                
+                <div className="flex flex-col gap-3 relative z-10">
+                  <button
+                    onClick={() => {
+                      setShowImportOptionsModal(false);
+                      loadBuiltInVocab('2000');
+                    }}
+                    className="w-full py-3 px-4 bg-slate-700/40 hover:bg-indigo-950/40 border border-slate-700/60 hover:border-indigo-800 rounded-2xl flex items-center gap-3 transition-all group text-left"
+                  >
+                    <span className="text-2xl group-hover:scale-110 transition-transform select-none">🎒</span>
+                    <div className="min-w-0">
+                      <div className="font-bold text-xs sm:text-sm text-slate-100">載入內建 2000 單字庫</div>
+                      <div className="text-[10px] sm:text-xs text-slate-400 mt-0.5">系統內建，標準 8 週特訓單字</div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowImportOptionsModal(false);
+                      loadBuiltInVocab('7000');
+                    }}
+                    className="w-full py-3 px-4 bg-slate-700/40 hover:bg-indigo-950/40 border border-slate-700/60 hover:border-indigo-800 rounded-2xl flex items-center gap-3 transition-all group text-left"
+                  >
+                    <span className="text-2xl group-hover:scale-110 transition-transform select-none">🎓</span>
+                    <div className="min-w-0">
+                      <div className="font-bold text-xs sm:text-sm text-slate-100">載入內建 7000 單字庫</div>
+                      <div className="text-[10px] sm:text-xs text-slate-400 mt-0.5">系統內建，進階完整挑戰單字</div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowImportOptionsModal(false);
+                      if (importTxtInputRef.current) {
+                        importTxtInputRef.current.click();
+                      }
+                    }}
+                    className="w-full py-3 px-4 bg-slate-700/40 hover:bg-indigo-950/40 border border-slate-700/60 hover:border-indigo-800 rounded-2xl flex items-center gap-3 transition-all group text-left"
+                  >
+                    <span className="text-2xl group-hover:scale-110 transition-transform select-none">📁</span>
+                    <div className="min-w-0">
+                      <div className="font-bold text-xs sm:text-sm text-slate-100">從本機選擇檔案 (.txt)</div>
+                      <div className="text-[10px] sm:text-xs text-slate-400 mt-0.5">選取裝置中的單字庫 TXT 檔案</div>
+                    </div>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setShowImportOptionsModal(false)}
+                  className="mt-5 w-full py-2.5 bg-slate-900 hover:bg-slate-950 text-slate-400 hover:text-slate-300 border border-slate-800 rounded-xl text-xs font-bold transition-colors"
+                >
+                  取消
+                </button>
               </div>
             </div>
           )}
