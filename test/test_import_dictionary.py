@@ -41,6 +41,7 @@ def run_tests():
         time.sleep(0.5)
         
         # Wait until React mounts DOM
+        import_txt_path = os.path.abspath(os.path.join(script_dir, "test_import.txt"))
         from selenium.webdriver.support.ui import WebDriverWait
         from selenium.webdriver.support import expected_conditions as EC
 
