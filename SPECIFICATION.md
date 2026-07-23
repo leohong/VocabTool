@@ -1,172 +1,107 @@
-# 🧠 極限單字特訓系統 - 產品規格書 (Product Specification)
+# 📐 極限單字特訓系統 - 系統規格書 (System Specification)
 
-*   **文件版本 (Document Version)**：1.2.10
-
-本規格書記錄「極限單字特訓系統」的系統架構、核心演算法、資料儲存結構、特訓功能模組以及自動化測試規範，供後續開發與維護查閱。
+> 本文件為 **VocabTool (背單字工具)** 之架構設計、資料結構、特訓演算法與介面互動規範標準。
 
 ---
 
-## 1. 系統架構 (System Architecture)
+## 1. 系統概述與設計哲學 (Overview & Philosophy)
 
-*   **部署型態**：單一 HTML 檔案應用程式 (Single Page Application)。支援離線雙擊即用，以及靜態網頁託管（如 GitHub Pages）。
-*   **前端依賴** (均透過 CDN 載入)：
-    *   **React 18**：負責組件渲染與狀態管理。
-    *   **Babel (Standalone)**：負責在瀏覽器端即時轉譯 JSX 程式碼。
-    *   **Tailwind CSS**：負責介面樣式排版（Glassmorphism 玻璃質感、極深色科技暗黑風格）。
-*   **資料持久化**：完全依賴瀏覽器端 `localStorage` 本地儲存。
+VocabTool 專為高強度的長期單字記憶計畫設計，採用 **雙階段流水線 (Flashcard Filter + Forced Spelling Test)** 結合 **雙倍消除演算法** 與 **間隔重複幽靈突襲 (Spaced Repetition Ghost Raids)**。
+
+### 核心原則：
+1. **主動回想與強迫盲測**：不提供選擇題輔助，逼迫腦肌神經建立英文與中文之間的直接反射鏈。
+2. **手滑警告與記憶斷裂懲罰**：首拼錯誤給予警告震動；二次拼錯視為失憶，鎖定輸入框並強迫完整重抄正確答案。
+3. **安全防護與備份機制**：所有進度與字庫皆保存在瀏覽器 `localStorage`，提供雲端直載、TXT 與 JSON 極限還原。
 
 ---
 
-## 2. 資料庫設計與格式 (Database Design & File Formats)
+## 2. 資料結構與存取規範 (Data Structures & Storage)
 
-### 2.1 本地儲存金鑰定義
-*   `vocab_currentDB`：當前學習所採用的字庫名稱（例如 `vocab_2000`）。
-*   `vocab_dbList`：使用者已建立或匯入的字庫名稱列表。
-*   `vocab_speechRate`：單字朗讀的語速設定（預設為 `0.8`）。
-*   `vocab_audioSettings`：聽寫播音器之自訂設定常數。
-*   `vocab_customVocab_{dbName}`：存放對應字庫的單字庫陣列。
-*   `vocab_state_{dbName}`：存放對應字庫的每日特訓狀態、錯題本、歷史殿堂等進度數據。
+### 2.1 全域版本號控制 (Versioning System)
+- 常數定義：`APP_VERSION = "X.Y.Z"`（三碼語意化版本號）。
+- `X`：Major 主版本、`Y`：Minor 功能版本、`Z`：Git Push/Build 計數。
+- UI 展示：僅呈現前兩碼 `X.Y`（例如 `v1.4`），自動截取 `DISPLAY_VERSION`。
 
-### 2.2 單字欄位定義 (`vocabList` 陣列項)
+### 2.2 單字模型 (Word Model)
 ```typescript
 interface Word {
-  en: string;       // 英文單字 (去除前後空格)
-  pos: string;      // 詞性 (例如 n., v., adj., adv. 或 idiom)
-  zh: string;       // 中文釋義
-  eg?: string;      // 例句與翻譯提示，格式為 "English sentence. (中文翻譯。)"
+  en: string;   // 英文單字 (例: "system")
+  zh: string;   // 中文釋義 (例: "系統")
+  pos: string;  // 詞性 (例: "n.", "v.", "adj.")
+  eg?: string;  // 例句 (可選, 例: "A computer system is complex. (電腦系統很複雜。)")
 }
 ```
 
-### 2.3 學習進度狀態定義 (`state` 物件)
+### 2.3 學習狀態模型 (Learning State Schema)
+儲存於 `localStorage` 的 `vocab_state_[dbName]`：
+
 ```typescript
-interface DBState {
-  currentDay: number;                     // 目前特訓天數 (第 1 天起算)
-  learnedWords: string[];                 // 已完成學習(已封存)的英文單字列表
-  mistakes: Record<string, number>;       // 當前錯題本，Key 為單字英文，Value 為累積錯誤次數
-  historicalMistakes: Record<string, {    // 歷史殿堂單字紀錄
-    mistakesCount: number;                // 該字在特訓期間之總失誤次數
-    nextReviewDate: string;               // 下次進行幽靈突襲的日期 (YYYY-MM-DD)
-    intervalStage: number;                // 當前間隔階段 (1: 7天, 2: 21天, 3: 60天, 4: 180天, 5: 永久免疫)
-    correctCount?: number;                // 目前在錯題本中累積的連續拼對次數
-    data: Word;                           // 備份的原單字資訊 (防止刪庫後資料遺失)
+interface DatabaseState {
+  currentDay: number;                     // 目前特訓天數 (天數從 1 開始)
+  mistakes: Array<{                       // 當前錯題集中營
+    word: Word;
+    wrongCount: number;
+    correctCount: number;
+  }>;
+  history: Array<{                        // 歷史殿堂 (封存單字)
+    word: Word;
+    wrongCount: number;
+    nextReviewDay: number;
+    immunized?: boolean;                  // 是否達到永久免疫
   }>;
   streak: {
-    count: number;                        // 連續打卡打卡天數
-    lastDate: string | null;              // 上次特訓打卡日期 (YYYY-MM-DD)
+    count: number;                        // 連續打卡天數
+    lastDate: string | null;              // 上次打卡日期 (YYYY-MM-DD)
   }
 }
 ```
 
-### 2.4 外部文字字庫格式 (TXT File Format)
-系統支援使用 UTF-8 編碼的純文字檔 (`.txt`) 來匯入與匯出單字。
-*   **檔案開頭標記**：第一行必須包含 `=== 特訓完整字庫 ===` 或 `=== 歷史殿堂單字個人紀錄 ===` 以利系統識別其類型。
-*   **單字行格式**：
-    *   **無例句單字**：`編號. [詞性] 英文單字 --> 中文釋義`
-        *   範例：`1. [art.] a --> 一個`
-    *   **含例句單字**：`編號. [詞性] 英文單字 --> 中文釋義 || 英文例句 (中文翻譯)`
-        *   範例：`2. [n.] system --> 系統 || This is a system. (這是一個系統。)`
-*   **相容性規範**：匯入時若偵測到 ` || ` 分隔符，會自動解析分割並載入為 `eg` 欄位；若無 ` || ` 則該單字例句預設為空字串，以維持舊版文字字庫的相容性。
+### 2.4 檔案匯入/匯出與選單介面規範 (Import & Export Spec)
+
+#### A. 選擇匯入來源選單 (`ImportOptionsModal`)
+點擊儀表板 `⬆️ 字` 按鈕觸發彈出 Modal，提供 3 種載入管道：
+1. **🎒 載入內建 2000 單字庫**：
+   - 優先調用 `fetch('https://raw.githubusercontent.com/leohong/VocabTool/main/2000_%E5%96%AE%E5%AD%97%E5%BA%AB.txt')` 異步載入。
+   - 解析內容並提示確認後覆寫目前字庫。
+2. **🎓 載入內建 7000 單字庫**：
+   - 優先調用 `fetch('https://raw.githubusercontent.com/leohong/VocabTool/main/7000_%E5%96%AE%E5%AD%97%E5%BA%AB.txt')` 異步載入。
+3. **📁 從本機選擇檔案 (.txt)**：
+   - 觸發隱藏的 `<input type="file" accept=".txt" />`，由使用者選取本地 TXT 單字檔。
+
+> [!NOTE]
+> **離線與網路備援邏輯**：當 GitHub 雲端直載遭遇 404 或連線失敗（例如處於離線狀態）時，系統會自動跳出提示並自動切換轉接開啟本機檔案選取器。
+
+#### B. 檔案格式規格
+* **字典 TXT 格式**：標頭為 `=== 特訓完整字庫 ===`，單字列格式為 `編號. [詞性] 英文 --> 中文 || 例句`。
+* **歷史殿堂 TXT 格式**：標頭為 `=== 歷史殿堂單字個人紀錄 ===`，格式為 `編號. 錯誤次數: X次 | [詞性] 英文 --> 中文`。
+* **JSON 全匯入/匯出**：
+  - 相容純單字陣列：`[{ en, pos, zh, eg }]`（可替代為 `word`/`meaning`/`example`）。
+  - 極限完整備份 (v2.0 `full_system`)：包含 `allDatabases` 物件、全域設定、每日學習目標與打卡紀錄。
 
 ---
 
 ## 3. 特訓流水線與核心演算法 (Training Pipeline & Algorithms)
 
-特訓流程採用**「主動回想 (Active Recall)」**與**「強制拼寫盲測 (Forced Spelling Test)」**雙階段流水線：
-
 ### 3.1 第一階段：快速篩選 (Flashcard Filter)
-*   **操作**：系統逐一顯示今日新單字與到期幽靈字，並朗讀發音。
-*   **按鍵/手勢**：
-    *   認識 ➔ 按 `→` 鍵 或 **向右滑動** ➔ 歸類為「記住了」，繼續推進。
-    *   不認識/猶豫 ➔ 按 `←` 鍵 或 **向左滑動** ➔ 該字會**立即被寫入「當前錯題集中營」**。
+* **展示**：顯示今日新單字與到期幽靈字，並透過 TTS 朗讀發音。
+* **判定**：
+  * 認識 ➔ 按 `→` 鍵 / 右滑 ➔ 進入下一字。
+  * 不認識 ➔ 按 `←` 鍵 / 左滑 ➔ 寫入「當前錯題集中營」。
 
-### 3.2 第二階段：強制盲測 (Spelling Dictation)
-*   **規則**：第一關篩選結束後，系統將所有不熟的錯題及新字打亂。
-*   **介面**：**隱藏英文單字**，僅展示中文解釋、詞性與字母數長度（如 `_ _ _ _ _`），游標強制聚焦輸入框，要求完全盲打拼寫。
-*   **拼寫判斷邏輯**：
-    1.  **手滑警告 (Slip Warning)**：單字拼錯時，若此字在此輪盲測中**尚未被記錄過失誤**，則判定為「手滑」。系統會發出警告震動並清除輸入，給予使用者第二次輸入機會。
-    2.  **記憶斷裂強迫重抄 (Strict Correction)**：若該字第二次拼錯，系統判定為「失憶」。系統會鎖定輸入框，並以亮綠色顯示正確拼寫，**強迫使用者對著正確答案完整輸入一次（強迫重抄）**，方可點擊 Enter 進入下一個字。該字答對次數歸零，錯題數加 1。
+### 3.2 第二階段：強制盲測 (Forced Spelling Test)
+* **規則**：隱藏英文單字，僅展示中文釋義與詞性，游標強制聚焦輸入框。
+* **機制**：
+  1. **手滑警告 (Slip Warning)**：首拼錯誤觸發警告震動並清空輸入框，給予第二次拼寫機會。
+  2. **強迫重抄懲罰 (Strict Correction)**：二次拼錯鎖定輸入框，亮綠色展示正確拼音，強迫使用者對照輸入正確答案方可通過。該字寫入錯題集中營且失誤數 +1。
 
 ### 3.3 雙倍消除演算法 (Double Elimination Algorithm)
-為了防止短暫記憶的欺騙，單字必須要在盲測中連續拼對指定次數，方可從當前錯題集中清除：
-$$\text{連續拼對目標次數} = \text{Min}(\text{該字錯誤次數} \times 2, 6)$$
-*   拼錯 1 次的單字：需要連續拼對 2 次。
-*   拼錯 2 次的單字：需要連續拼對 4 次。
-*   拼錯 3 次及以上的單字：需要連續拼對 6 次。
-*   此演算法迫使使用者在盲測循環中多次複習自己犯錯的難詞，重塑大腦連結。
-
-### 3.4 特訓期間單字刪除之狀態同步規範 (Word Deletion during Active Training)
-為了維護良好的使用者體驗，防止已刪除的單字重新出現在後續特訓中，系統在刪除單字時必須遵守以下同步規範：
-*   **佇列同步過濾**：當單字從字庫中被徹底刪除時，系統除了更新詞庫檔案外，**必須同時**將該單字從當前特訓佇列 `queue` 以及本輪特訓原始字組 `currentSessionWords` 中過濾清除。
-*   **防洩漏設計**：第一階段「快速篩選」結束進入第二階段「拼字特訓」時，系統會重新將 `queue` 設為 `currentSessionWords`。此時因為 `currentSessionWords` 已完成過濾，被刪除的單字將不會出現在拼字特訓中。
-*   **自動跳過與結算**：
-    *   若刪除的是當前畫面顯示的單字，應自動跳過並載入佇列中下一個單字。
-    *   若過濾後佇列中無剩餘單字，系統應立即跳轉至特訓結算頁面 (`summary`)。
-*   **離線/暫停同步**：即使特訓處於暫停狀態（例如 `view === 'dashboard'`），若使用者在主頁清單中刪除了屬於本輪暫存的單字，該單字也應立即從暫存佇列中移除，避免日後「繼續特訓」時重新載入。
+單字必須在盲測中連續拼對指定次數（通常為 2 次），方可自當前錯題集中清除並移入「歷史殿堂」。
 
 ---
 
-## 4. 間隔重複與歷史殿堂 (SRS System)
+## 4. 系統測試與品質規範 (Testing Guidelines)
 
-單字從當前錯題集順利「雙倍消除」後，會被封存至**歷史殿堂**，並啟動間隔重複（Spaced Repetition）複習機制：
-
-### 4.1 間隔階段 (Interval Stages)
-系統會依照以下間隔天數，自動將封存單字安插回未來的每日特訓中作為「幽靈單字 👻」進行突襲抽查：
-*   **Stage 1**：第 `7` 天進行第一次抽查。
-*   **Stage 2**：第 `21` 天進行第二次抽查。
-*   **Stage 3**：第 `60` 天進行第三次抽查。
-*   **Stage 4**：第 `180` 天進行第四次抽查。
-*   **Stage 5 (永久免疫 🛡️)**：通過 180 天抽查後，該字獲得永久免疫，不再進行日常突襲，成為長期記憶的穩固部分。
-
-### 4.2 幽靈字突襲獎懲機制
-在每日發動特訓時，系統會自動比對當前日期是否 $\ge$ 單字的 `nextReviewDate`。
-*   **抽查答對**：該字提升一個間隔階段（如 Stage 2 ➔ Stage 3），並根據目前日期重新計算下次 review 的日期。
-*   **抽查答錯 (失手兩次)**：該單字將會被**踢出歷史殿堂**，強制遣返回「當前錯題本」從頭進行雙倍消除修煉，其間隔階段重設為 Stage 1。
-
----
-
-## 5. 聽寫背單字特訓播放器 (Audio Dictation Player)
-
-為了強化聽力背單字與盲聽特訓，本系統配備專屬音訊播放模組：
-
-### 5.1 播放佇列與模式
-*   **資料來源**：支援選取今日進度、錯題集中營、歷史殿堂以及全字庫單字。
-*   **播放範圍**：支援全來源播放、當前分頁、自訂單字編號區間（從編號 A 到 B），以及單一單字無限循環。
-
-### 5.2 發音流程 (Speech Pipeline)
-每個單字播放時，嚴格遵循以下語音與延遲管線：
-1.  **唸英文單字**：朗讀英文單字本身（語速為全域設定 `speechRate`）。
-2.  **拼讀英文字母**：逐字拼讀字母（如唸 "a-p-p-l-e"）。
-    *   **發音速度**：字母讀速與單字發音速率（`speechRate`）完全同步。
-    *   **字母間隔時間**：可自訂調整（`spellingPause`），提供 `0 秒`（無停頓連讀）、`0.02 秒`（微停頓）、`0.05 秒`（極快）至 `0.5 秒`等選擇。預設為 `0.15 秒` 正常間隔。
-3.  **唸單字與中文釋義**：再次唸出英文單字，接著唸出中文翻譯。
-    *   **發音語系對應**：英文與中文的發音語系直接設定為 `en-US` 與 `zh-TW`，由瀏覽器底層發音引擎自動配對適合的本地或網路發音人播放。
-4.  **唸英文例句與翻譯**：(選用項目) 解析帶括號的例句，先讀英文部分，再讀帶括號的中文翻譯部分。
-5.  **單字間停頓**：停頓指定秒數後，自動進入下一個單字。
-
-### 5.3 盲聽模式 (Blind Mode)
-*   提供一鍵眼睛隱藏按鈕。開啟後，播放器面板會完全遮蔽（模糊/圓點隱藏）英文單字拼寫與中文翻譯。
-*   配備**拼字高亮微動畫**：拼讀字母時，網頁上的字母會隨發音節奏逐字放大並閃爍靛藍色微光。
-*   **行動端防休眠 (Wake Lock)**：播放器啟用時，自動呼叫 `navigator.wakeLock.request('screen')` 鎖定螢幕不休眠，防止網頁因系統鎖屏與防睡眠阻斷 JS 播放器循環。
-
----
-
-## 6. 自動化測試系統 (Automated Testing)
-
-專案測試檔案統一置於 [test/](file:///g:/%E6%88%91%E7%9A%84%E9%9B%B2%E7%AB%AF%E7%A1%AC%E7%A2%9F/%E5%80%8B%E4%BA%BA%E8%B3%87%E6%96%99%E5%A4%BE/%E5%AD%B8%E7%BF%92%E8%B3%87%E6%96%99/%E8%8B%B1%E8%AA%9E/%E8%83%8C%E5%96%AE%E5%AD%97%E5%B7%A5%E5%85%B7/test/) 目錄管理，使用 Selenium WebDriver 執行端到端 (E2E) 測試：
-
-### 6.1 測試架構
-*   **技術棧**：Python 3 + Selenium WebDriver (Headless Chrome)。
-*   **語音 API Mock**：
-    *   由於 Headless CI 環境中無聲卡硬體，且語音 API 屬於同步/非同步混合，測試會透過 Javascript 注入 Mock 覆寫 `window.speechSynthesis`。
-    *   Mock 物件會紀錄發音的歷史資料（`mockSpeechHistory`），包括朗讀文字、語言、以及語速率（`rate`），並模擬語音播放結束時觸發 `utterance.onend()`，從而加速測試的播放。
-*   **測試涵蓋範圍**：
-    *   主畫面的按鈕狀態與導向。
-    *   聽寫播放器的參數自訂與範圍截斷（A 到 B）。
-    *   盲聽按鈕的切換與 DOM 隱藏檢驗。
-    *   播放器控制項（暫停、下一首、上一首、退出返回 Dashboard）。
-    *   語速與間隔的正確性檢驗。
-
-### 6.2 迴歸測試與防範驗證 (Regression Testing)
-*   **特訓中單字刪除測試 (`test_delete_word.py`)**：
-    *   每次修改核心流程後，應執行此測試來模擬「在快速篩選階段中途刪除單字」的情境。
-    *   測試必須驗證刪除後的單字立刻被跳過，且後續的「拼字特訓」階段中絕對不能出現該被刪除單字的題目。
+- **自動化測試工具**：Python + Selenium Headless Chrome。
+- **測試執行準則**：
+  - **精準局部測試**：優先針對修改模組執行專屬腳本（如 `python test/test_import_options_modal.py`）。
+  - **禁止 DOM 控制台輸出**：除錯資訊必須寫入 `test/failure_source.html` 或 `.png` 截圖，禁止 `print(driver.page_source)` 浪費 Token。
