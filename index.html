@@ -639,7 +639,8 @@ window.Dashboard = ({
   exportJson,
   handleImportJson,
   resetProgress,
-  deleteCurrentDB
+  deleteCurrentDB,
+  setShowLicensesModal
 }) => {
   const dailyWordsCount = vocabList && vocabList.slice ? vocabList.length : 0;
 
@@ -892,6 +893,12 @@ window.Dashboard = ({
             className="text-[10px] text-slate-500 hover:text-red-400 underline transition-colors"
           >
             重設此區進度
+          </button>
+          <button
+            onClick={() => setShowLicensesModal(true)}
+            className="text-[10px] text-slate-500 hover:text-indigo-400 underline transition-colors font-medium"
+          >
+            開源授權宣告
           </button>
           <button
             onClick={deleteCurrentDB}
@@ -2750,6 +2757,93 @@ window.ImportOptionsModal = ({
   );
 };
 
+// --- 10. 開源軟體授權宣告 Modal ---
+window.LicensesModal = ({ showLicensesModal, setShowLicensesModal }) => {
+  if (!showLicensesModal) return null;
+
+  const licenses = [
+    {
+      name: "VocabTool-App (極限單字特訓系統)",
+      copyright: "Copyright (c) 2026 Leo Hong",
+      license: "本應用程式主程式、演算法與使用者介面之版權與所有權屬原作者所有。保留所有權利。(All Rights Reserved. Proprietary Software.)"
+    },
+    {
+      name: "Capacitor Core & Android Platform",
+      copyright: "Copyright (c) 2017-present Drifty Co. d/b/a Ionic",
+      license: `MIT License\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.`
+    },
+    {
+      name: "Capacitor Plugins (preferences, filesystem, share)",
+      copyright: "Copyright (c) 2017-present Drifty Co. d/b/a Ionic",
+      license: `MIT License\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.`
+    },
+    {
+      name: "Capacitor Text-to-Speech Plugin",
+      copyright: "Copyright (c) 2021 Capacitor Community",
+      license: `MIT License\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.`
+    },
+    {
+      name: "Capgo Capacitor-Updater Plugin",
+      copyright: "Copyright (c) 2022 Capgo",
+      license: `MIT License\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.`
+    },
+    {
+      name: "React & React DOM",
+      copyright: "Copyright (c) Meta Platforms, Inc. and affiliates.",
+      license: `MIT License\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.`
+    },
+    {
+      name: "Tailwind CSS",
+      copyright: "Copyright (c) Tailwind Labs, Inc.",
+      license: `MIT License\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.`
+    },
+    {
+      name: "Babel Standalone",
+      copyright: "Copyright (c) 2014-present Sebastian McKenzie and other contributors",
+      license: `MIT License\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.`
+    }
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+        <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/40">
+          <h3 className="font-black text-indigo-400 text-sm tracking-wide">開源軟體授權宣告</h3>
+          <button 
+            onClick={() => setShowLicensesModal(false)}
+            className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition-colors text-sm"
+          >
+            ×
+          </button>
+        </div>
+        <div className="p-6 overflow-y-auto space-y-5 text-slate-300">
+          <p className="text-xs text-slate-400 leading-relaxed">
+            本應用程式之實作使用了以下第三方開源組件。依據各組件之授權條款，特此羅列其版權聲明與授權文件，以符法規：
+          </p>
+          {licenses.map((item, idx) => (
+            <div key={idx} className="p-4 bg-slate-950/60 rounded-2xl border border-slate-800/80 space-y-2 text-left">
+              <h4 className="font-bold text-indigo-300 text-xs">{item.name}</h4>
+              <p className="text-[10px] text-slate-500 italic">{item.copyright}</p>
+              <pre className="text-[9px] text-slate-400 bg-slate-900/60 p-2.5 rounded-lg overflow-x-auto max-h-24 whitespace-pre-wrap font-mono leading-normal border border-slate-800">
+                {item.license}
+              </pre>
+            </div>
+          ))}
+        </div>
+        <div className="px-6 py-3.5 border-t border-slate-800/80 flex justify-end bg-slate-950/20">
+          <button 
+            onClick={() => setShowLicensesModal(false)}
+            className="px-5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-semibold rounded-xl transition-colors"
+          >
+            確認關閉
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 
     // ==========================================
     // --- File: www/js/app.js ---
@@ -2841,6 +2935,7 @@ function App() {
   // --- 聽音背單字狀態 ---
   const [showAudioSetupModal, setShowAudioSetupModal] = useState(false);
   const [showImportOptionsModal, setShowImportOptionsModal] = useState(false);
+  const [showLicensesModal, setShowLicensesModal] = useState(false);
   const [audioSource, setAudioSource] = useState('daily'); // 'daily', 'mistakes', 'history', 'library'
   const [audioRange, setAudioRange] = useState('all'); // 'all', 'page', 'custom', 'word'
   const [audioStartIdx, setAudioStartIdx] = useState(1);
@@ -2891,7 +2986,7 @@ function App() {
       const response = await fetch(UPDATE_CONFIG_URL, { cache: 'no-store' });
       if (!response.ok) return;
       const remoteConfig = await response.json();
-      
+
       if (remoteConfig.version && remoteConfig.url) {
         const isNewer = (remoteVer, localVer) => {
           const parse = (v) => v.split('.').map(n => parseInt(n, 10) || 0);
@@ -2982,7 +3077,7 @@ function App() {
   // --- 系統同步與續傳 ---
   useEffect(() => {
     if (!isStorageLoaded) return;
-    
+
     async function checkTempSession() {
       const tempSession = await window.persistentStorage.getSetting(`vocab_tempSession_${dbName}`, null);
       if (tempSession) {
@@ -3018,7 +3113,7 @@ function App() {
   // 自動暫存
   useEffect(() => {
     if (!isStorageLoaded) return;
-    
+
     async function handleTempSession() {
       if (view !== 'dashboard' && view !== 'summary') {
         const sessionData = { queue, currentSessionWords, sessionType, view, date: new Date().toDateString() };
@@ -3158,7 +3253,7 @@ function App() {
         console.log('TTS speakAsync using native Capacitor plugin');
         try {
           await tts.stop();
-          
+
           const onAbort = () => {
             tts.stop();
             resolve();
@@ -3173,7 +3268,7 @@ function App() {
             volume: (audioSettings.volume ?? 80) / 100,
             category: 'ambient'
           });
-          
+
           if (signal) signal.removeEventListener('abort', onAbort);
           console.log('TTS speakAsync native speak completed:', text);
           resolve();
@@ -3278,7 +3373,7 @@ function App() {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    
+
     const tts = getTtsPlugin();
     if (tts) {
       tts.stop().catch(err => console.error('TTS native stop error:', err));
@@ -3314,7 +3409,7 @@ function App() {
   const runAudioLoop = async (startIndex, queueToPlay, settings, signal) => {
     let idx = startIndex;
     await requestWakeLock();
-    
+
     while (idx < queueToPlay.length && !signal.aborted) {
       setCurrentAudioIndex(idx);
       const word = queueToPlay[idx];
@@ -3334,9 +3429,9 @@ function App() {
         setAudioSubStep('spelling');
         setAudioStatusText(`拼讀字母...`);
         const chars = word.en.toLowerCase().replace(/[^a-z']/g, '').split('');
-        
+
         let spellingFinished = false;
-        
+
         // Dynamic highlight delay checking if the audio has completed early
         const delayHighlight = (ms) => {
           return new Promise((resolve) => {
@@ -3359,7 +3454,7 @@ function App() {
           }
           setActiveSpellingChar(-1);
         };
-        
+
         runHighlight();
 
         const spellingStr = chars.join(', ');
@@ -3521,7 +3616,7 @@ function App() {
       abortControllerRef.current = abortController;
       runAudioLoop(currentAudioIndex, audioQueue, audioSettings, abortController.signal);
     }
-    
+
     return () => {
       if (view !== 'audio_player') {
         if (abortControllerRef.current) {
@@ -3815,13 +3910,13 @@ function App() {
   // ----------------------------------------
   const downloadFile = async (filename, content, type) => {
     const isNative = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
-    
+
     if (isNative) {
       let writeSuccess = false;
       try {
         const { Filesystem } = window.Capacitor.Plugins || {};
         const { Share } = window.Capacitor.Plugins || {};
-        
+
         if (Filesystem && Share) {
           // 在原生平台上，先寫入暫存檔案，然後透過 Share 分享/下載
           const result = await Filesystem.writeFile({
@@ -3831,7 +3926,7 @@ function App() {
             encoding: 'utf8'
           });
           writeSuccess = true;
-          
+
           await Share.share({
             title: filename,
             url: result.uri
@@ -3846,7 +3941,7 @@ function App() {
           return;
         }
       }
-      
+
       // 備用方案：只有當檔案寫入失敗時，才嘗試複製到剪貼簿
       try {
         await navigator.clipboard.writeText(content);
@@ -4140,7 +4235,7 @@ function App() {
             const [_, mistakesCount, pos, en, rest] = match;
             const wordKey = en.trim();
             const mCount = parseInt(mistakesCount, 10);
-            
+
             let zh = rest.trim();
             let eg = '';
             if (zh.includes(' || ')) {
@@ -4148,10 +4243,10 @@ function App() {
               zh = parts[0].trim();
               eg = parts[1].trim();
             }
-            
+
             const word = { en: wordKey, pos: pos.trim(), zh };
             if (eg) word.eg = eg;
-            
+
             importedVocab.push(word);
             importedHistory[wordKey] = {
               mistakesCount: mCount,
@@ -4346,7 +4441,7 @@ function App() {
 
     setState(prev => {
       const nextState = { ...prev };
-      
+
       if (prev.mistakes && prev.mistakes[originalWord.en]) {
         const m = prev.mistakes[originalWord.en];
         const updatedMistake = { ...m, data: newWordData };
@@ -4358,7 +4453,7 @@ function App() {
           nextState.mistakes[newEn] = updatedMistake;
         }
       }
-      
+
       if (prev.historicalMistakes && prev.historicalMistakes[originalWord.en]) {
         const h = prev.historicalMistakes[originalWord.en];
         const updatedHistory = { ...h, data: newWordData };
@@ -4370,7 +4465,7 @@ function App() {
           nextState.historicalMistakes[newEn] = updatedHistory;
         }
       }
-      
+
       return nextState;
     });
 
@@ -4515,18 +4610,6 @@ function App() {
   // ----------------------------------------
   // --- 6. 畫面渲染 (UI 分派) ---
   // ----------------------------------------
-  if (otaUpdating) {
-    return (
-      <div className="w-full max-w-md mx-auto flex flex-col items-center justify-center min-h-[60vh] bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-2xl text-center space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
-        <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-        <div>
-          <h2 className="text-2xl font-black text-indigo-400 tracking-wide">下載特訓模組中</h2>
-          <p className="text-slate-400 text-sm mt-2 font-medium">正在取得最新版本，完成後將自動載入...</p>
-        </div>
-      </div>
-    );
-  }
-
   if (!appLoaded) {
     return (
       <div className="w-full max-w-md mx-auto flex flex-col items-center justify-center min-h-[60vh] bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-2xl text-center space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
@@ -4596,6 +4679,7 @@ function App() {
             handleImportJson={handleImportJson}
             resetProgress={resetProgress}
             deleteCurrentDB={deleteCurrentDB}
+            setShowLicensesModal={setShowLicensesModal}
           />
         )}
 
@@ -4789,6 +4873,11 @@ function App() {
         setShowImportOptionsModal={setShowImportOptionsModal}
         loadBuiltInVocab={loadBuiltInVocab}
         handleImportTXT={handleImportTXT}
+      />
+
+      <LicensesModal
+        showLicensesModal={showLicensesModal}
+        setShowLicensesModal={setShowLicensesModal}
       />
 
     </div>

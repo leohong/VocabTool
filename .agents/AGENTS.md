@@ -1,20 +1,90 @@
-# Project Rules
+# 🤖 VocabTool-App AI Agent Workspace Instructions & Knowledge
 
-- **Git Confirmation**: Always ask the user for explicit confirmation in the chat text before proposing or executing any git push commands. Git commit and add commands can be executed or proposed automatically without blocking.
+本文件記錄 `VocabTool-App` 專案的核心開發規範、架構決策與運作流程。在任何電腦開開啟本專案時，AI Agent 均會自動載入本規範以維持無縫工作接續。
 
-- **Versioning Rule (X.Y.Z)**:
-  - Version format is `X.Y.Z` where `X` is Major version, `Y` is Minor version, and `Z` is the Git Push count.
-  - The UI display should only show the first two digits `X.Y` (e.g. `v1.2` extracted dynamically from `APP_VERSION = "1.2.0"`).
-  - Before executing any `git commit`/`git push`, the developer or AI agent MUST increment `Z` (the third digit) by 1 (e.g. from `1.2.0` to `1.2.1`) inside the `APP_VERSION` constant in `index.html`.
-  - When major or minor features are added, manually increment `X` or `Y` and reset `Z` to `0` or `1`.
+---
 
-- **Change Approval**: Always present the implementation plan/proposal and get the user's explicit consent in the chat BEFORE making any code modifications. If the user only asks for explanations or troubleshooting reasons, do NOT modify the codebase.
+## 1. 專案架構規範 (Clean Modular Architecture)
 
-- **主程式變更測試規則 (Main Program Test Rule)**: 若主程式 `index.html` 沒有任何程式碼變更（例如僅修改規格書或文件檔案），則不需執行自動化測試。
+*   **開發源碼目錄 (`www/js/`)**：
+    *   `utils/`：純演算法與 API 工具（`textUtils.js`, `dictionaryApi.js`）。
+    *   `hooks/`：React 業務邏輯與狀態（`useVocabState.js`）。
+    *   `components/`：1:1 原裝 UI 視覺元件 (`Header.js`, `Dashboard.js`, `Sessions.js`, `AudioPlayer.js`, `Modals.js`)。
+    *   `app.js`：核心生命週期進入點。
+*   **發布與編譯檔 (`www/index.html`)**：
+    *   由建置腳本 `scripts/build.js` 自動生成。
+    *   **原因**：Android WebView (`file://`) 嚴格禁止 AJAX 跨檔讀取外部 JSX。預編譯打包可確保離線免 CORS 錯誤。
 
-- **Token 節省開發與測試準則 (Token Saving Rule)**:
-  - **精準局部讀取**：禁止一次性 `view_file` 讀取整份 `index.html`。必須先使用 `grep_search` 定位關鍵程式碼所在行數，再指定 `StartLine` 與 `EndLine` 僅讀取所需片段。
-  - **精準代碼修改**：修改程式碼時，使用 `replace_file_content` 僅針對特定區間做精準替換，避免覆寫大範圍無關代碼。
-  - **禁止在控制台輸出 DOM**：在測試中（無論新寫或修改測試），**絕對禁止**將 `driver.page_source` 或整個 DOM 結構 `print` 輸出到 console / stdout / stderr。這會造成巨大的終端機輸出，嚴重浪費 Token。如有除錯需要，必須將 page source 寫入本地的 `test/failure_source.html` 或其他本地檔案中。
-  - **單一功能測試優先**：在確認變更時，優先執行針對該模組的特定測試腳本（如 `python test/test_audio_player.py`），而非每次都跑完整的 `test_all_features.py`。
+---
+
+## 2. 開發與打包指令與環境變數 (Commands & Environment)
+
+*   **環境變數設定 (PowerShell 範例)**：
+    ```powershell
+    # 設定 Java 21 JDK 路徑 (使用 Android Studio 內建 JBR)
+    $env:JAVA_HOME="D:\Android\Android Studio\jbr"
+    
+    # 將 ADB 加入 PATH (若尚未設定)
+    $env:Path += ";C:\Users\hys82\AppData\Local\Android\Sdk\platform-tools"
+    ```
+
+*   **開發指令**：
+    ```powershell
+    # 1. 預編譯打包 JavaScript 模組至 www/index.html
+    cmd /c npm run build
+    
+    # 2. 同步 web 資源至 Android 原生工程
+    cmd /c npx cap sync android
+    
+    # 3. 編譯 Debug APK
+    cd android
+    .\gradlew.bat assembleDebug
+    
+    # 4. 安裝並重啟 App 至連線裝置
+    & "C:\Users\hys82\AppData\Local\Android\Sdk\platform-tools\adb.exe" install -r .\app\build\outputs\apk\debug\app-debug.apk
+    & "C:\Users\hys82\AppData\Local\Android\Sdk\platform-tools\adb.exe" shell am start -n com.vocabtool.app/com.vocabtool.app.MainActivity
+    ```
+
+---
+
+## 3. 重要開發鐵律 (Strict Guidelines)
+
+1. **🔒 Git Server 上傳限制**：所有程式碼開發、模組編譯與版本 tag 動作一律先在 Local 本機端完成。未經使用者明確口頭同意，絕不自動執行 `git push`、推送 tag 或任何將變更上傳至 Git Server 的動作！
+2. **🎨 UI 0 變化原則**：進行重構時，務必確保原本的 Tailwind CSS 樣式、動畫、按鈕顏色與排版 100% 零偏離。
+3. **🏷️ 語意化版本控制 (SemVer)**：每次改版必須嚴格遵守 SemVer 規範。主變更 (MAJOR)、功能增刪 (MINOR)、Bug 修復 (PATCH) 與 Android `versionCode` (單調遞增) 必須同步修改於 `app.js`、`build.gradle`、`SPECIFICATION.md` 與 `package.json`，並與 Git Tag 保持 100% 一致。
+
+---
+
+## 4. 自動化測試與本地伺服器測試規範 (Testing & Local Server Guidelines)
+
+*   **動態連接埠分配 (Dynamic Port)**：進行本地測試或 Selenium 自動化測試時，**禁止**使用固定 HTTP 連接埠 (例如 8001)。應一律綁定連接埠 `0`（由 OS 分配閒置連接埠），並將目標連線網址指定為 `127.0.0.1`，以防 `localhost` 本機 DNS 解析失敗或 IPv6/IPv4 衝突導致連線逾時。
+*   **伺服器資源回收 (Resource Cleanup)**：測試腳本結束前（不論成功或失敗），必須在 `finally` 區塊中明確執行 `httpd.shutdown()` 和 `httpd.server_close()` 釋放線程與 Socket 資源，防止殘存殭屍程序佔用連接埠。
+*   **非阻塞本地伺服器 (Non-blocking Local Server)**：在 Windows 環境下，提供本地伺服器測試指令時，應搭配 `start` 開啟新視窗（例如 `npm run serve`），防止持久運行的伺服器行程直接卡死終端機。
+
+---
+
+## 5. Capacitor 原生平台檔案與套件處理規範 (Capacitor Native Platform Guidelines)
+
+*   **WebView 檔案下載限制 (File Export in WebView)**：Android/iOS WebView 預設會阻擋 Blob URL 下載。字庫、歷史紀錄與備份 JSON 的匯出功能必須整合 `@capacitor/filesystem` (寫入 `CACHE` 目錄) 與 `@capacitor/share` (喚起原生分享選單)。
+*   **分享取消處理 (Graceful Share Cancellation)**：原生分享外掛在使用者主動取消分享時會拋出例外（例如 `Share canceled`）。寫入成功後若因分享取消而進入 `catch`，不應觸發剪貼簿備份或彈出「請確認 App 權限」之誤導性警告。
+*   **Kotlin 與依賴版本管理 (Kotlin Dependencies)**：**禁止**在 `android/build.gradle` 中強制鎖定（force）舊版 Kotlin 標準庫（如 `kotlin-stdlib:1.8.22`），避免與 `@capacitor/filesystem` 等現代原生外掛所需的協程庫發生 `NoClassDefFoundError: Failed resolution of: Lkotlin/coroutines/jvm/internal/SpillingKt;` 衝突。應交由 Gradle 自行解析最高相容版本。
+
+---
+
+## 6. 完整技術手冊 (Full Documentation)
+
+關於更詳細的聽讀特訓機制（盲聽、逐字拼讀高亮）、手滑強制重寫邏輯、CORS WebView 建置原因及各模組詳細依賴關係，請參閱根目錄的：
+*   **技術手冊**：[DEVELOPMENT_GUIDE.md](file:///d:/MyProjects/VocabTool-App/DEVELOPMENT_GUIDE.md)
+
+---
+
+## 7. Token 消耗與環境優化鐵律 (Token Optimization Guidelines)
+為了防止 AI Agent 對話因 Context 膨脹而耗盡 Token 或響應遲緩，開發與編譯時必須嚴格遵守以下準則：
+1. **編譯輸出限流 (Quiet Build Output)**：
+   - 執行 Gradle 編譯指令（如 `.\gradlew.bat assembleDebug`）時，一律加上 `-q` (Quiet) 參數或重新導向輸出至檔案（例如 `> build.log`），**嚴禁**將數萬行的完整 Gradle 編譯日誌直接輸出到終端機。
+2. **精準檔案操作 (Precise File Operations)**：
+   - 除非必要，否則**關鍵修改**一律使用 `replace_file_content` 做局部代碼塊的精準修改，**禁止**重寫或讀取整支大檔案。
+3. **無用輸出屏蔽 (Suppress Verbose Output)**：
+   - 執行測試或搜尋時，過濾掉不必要的除錯輸出。僅在失敗時將錯誤資訊寫入暫存檔案或截圖，切勿大量 `print`。
+
 
