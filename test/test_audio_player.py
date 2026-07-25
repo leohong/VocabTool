@@ -79,17 +79,17 @@ def run_tests():
         )
         assert setup_modal is not None
         
-        btn_library = driver.find_element(By.XPATH, "//button[contains(., '\u6574\u500b\u55ae\u5b57\u5eab')]")
+        btn_library = driver.find_element(By.XPATH, "//button[contains(., '\u7cfb\u7d71\u5b8c\u6574\u5b57\u5eab')]")
         btn_library.click()
         
-        range_select_el = driver.find_element(By.XPATH, "//select[option[@value='custom']]")
-        select_range = Select(range_select_el)
-        select_range.select_by_value("custom")
+        # Click the radio button for 'custom' (自訂編號範圍)
+        btn_custom = driver.find_element(By.XPATH, "//label[contains(., '\u81ea\u8a02\u7de8\u865f\u7bc4\u570d')]/input[@type='radio']") # 自訂編號範圍
+        driver.execute_script("arguments[0].click();", btn_custom)
         
         start_idx_input = wait.until(
-            EC.presence_of_element_located((By.XPATH, "//input[@type='number' and preceding-sibling::span[contains(text(), '\u958b\u59cb')]]"))
+            EC.presence_of_element_located((By.XPATH, "//input[@type='number' and preceding-sibling::span[contains(text(), '\u7bc4\u570d\u81ea')]]")) # 範圍自
         )
-        end_idx_input = driver.find_element(By.XPATH, "//input[@type='number' and preceding-sibling::span[contains(text(), '\u7d50\u675f')]]")
+        end_idx_input = driver.find_element(By.XPATH, "//input[@type='number' and preceding-sibling::span[contains(text(), '\u5230')]]") # 到
         
         start_idx_input.clear()
         start_idx_input.send_keys("1")
@@ -117,7 +117,8 @@ def run_tests():
         assert progress_text is not None
         
         card_content = driver.find_element(By.XPATH, "//main").text
-        assert "apple" not in card_content or "blind" in card_content.lower() or "🙈" in card_content
+        # In version 1.6.2, blindMode is false by default, so "apple" should be visible
+        assert "apple" in card_content.lower()
         
         btn_play_pause = wait.until(
             EC.element_to_be_clickable((By.XPATH, "//button[@title='\u66ab\u505c\u64ad\u653e' or @title='\u7e7c\u7e8a\u64ad\u653e' or @title='暫停播放' or @title='繼續播放']"))
@@ -155,8 +156,9 @@ def run_tests():
         btn_blind_toggle.click()
         time.sleep(0.3)
         
-        card_content_revealed = driver.find_element(By.XPATH, "//main").text
-        assert "apple" in card_content_revealed.lower()
+        card_content_hidden = driver.find_element(By.XPATH, "//main").text
+        # Since we clicked toggle, blindMode is now true, so "apple" should be hidden
+        assert "apple" not in card_content_hidden.lower() or "🙈" in card_content_hidden or "blind" in card_content_hidden.lower()
         
         btn_stop = driver.find_element(By.XPATH, "//button[contains(., '\u505c\u6b62\u4e26\u8fd4\u56de')]")
         btn_stop.click()
@@ -181,7 +183,15 @@ def run_tests():
         print("[SUCCESS] test_audio_player passed.")
         
     except Exception as e:
-        print(f"\n[FAILURE] test_audio_player failed, error: {e}", file=sys.stderr)
+        try:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            with open(os.path.join(current_dir, "test_error.txt"), "w", encoding="utf-8") as err_f:
+                err_f.write(f"Error: {str(e)}\n")
+                import traceback
+                traceback.print_exc(file=err_f)
+            print(f"[FAILURE] test_audio_player failed. Saved error traceback to test_error.txt")
+        except Exception as inner_e:
+            pass
         try:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             
