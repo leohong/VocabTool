@@ -401,6 +401,349 @@ window.fetchDictionaryData = async (queryStr) => {
 
 
     // ==========================================
+    // --- File: www/js/utils/exportImportUtils.js ---
+    // ==========================================
+// ==========================================
+// --- 📁 資料匯入匯出與備份工具 (exportImportUtils.js) ---
+// ==========================================
+
+// 通用檔案下載與跨平台分享 (相容 App 原生沙盒寫入與 Web Blob 下載)
+window.downloadFile = async (filename, content, contentType) => {
+  try {
+    const isNative = typeof window !== 'undefined' && 
+                      window.Capacitor && 
+                      window.Capacitor.isNativePlatform && 
+                      window.Capacitor.isNativePlatform();
+
+    if (isNative && window.Capacitor.Plugins.Filesystem) {
+      const Filesystem = window.Capacitor.Plugins.Filesystem;
+      const Share = window.Capacitor.Plugins.Share;
+
+      // 寫入 Native CACHE 目錄
+      const result = await Filesystem.writeFile({
+        path: filename,
+        data: content,
+        directory: 'CACHE',
+        encoding: 'utf8'
+      });
+
+      if (Share) {
+        try {
+          await Share.share({
+            title: filename,
+            text: `匯出檔案: ${filename}`,
+            url: result.uri,
+            dialogTitle: '分享或儲存備份檔案'
+          });
+        } catch (shareErr) {
+          // 使用者取消分享不應拋出例外警告
+          if (shareErr && (shareErr.message === 'Share canceled' || shareErr.name === 'AbortError')) {
+            console.log('[Storage] User canceled share dialog.');
+            return;
+          }
+          console.warn('[Storage] Share dialog error:', shareErr);
+        }
+      }
+      return;
+    }
+
+    // Web 瀏覽器環境
+    const blob = new Blob([content], { type: contentType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('[Storage] downloadFile error:', err);
+    alert(`檔案匯出失敗：${err.message || err}`);
+  }
+};
+
+window.exportDictionaryTXT = (vocabList, dbName) => {
+  let content = "=== 特訓完整字庫 ===\n\n";
+  vocabList.forEach((w, idx) => {
+    content += `${idx + 1}. [${w.pos}] ${w.en} --> ${w.zh}${w.eg ? ` || ${w.eg}` : ''}\n`;
+  });
+  window.downloadFile(`字典_${dbName}.txt`, content, 'text/plain');
+};
+
+window.exportHistoryTXT = (historicalMistakes, vocabList, dbName) => {
+  const historyList = Object.values(historicalMistakes || {});
+  if (historyList.length === 0) return alert("歷史殿堂目前空空如也，無需匯出。");
+  let content = `=== 歷史殿堂單字個人紀錄 ===\n\n`;
+  historyList.forEach((m, idx) => {
+    const vocabWord = (vocabList || []).find(w => w.en === m.data.en);
+    const currentEg = (vocabWord && vocabWord.eg) || m.data.eg || '';
+    content += `${idx + 1}. 錯誤次數: ${m.mistakesCount}次 | [${m.data.pos}] ${m.data.en} --> ${m.data.zh}${currentEg ? ` || ${currentEg}` : ''}\n`;
+  });
+  window.downloadFile(`歷史殿堂_${dbName}.txt`, content, 'text/plain');
+};
+
+
+    // ==========================================
+    // --- File: www/js/utils/audioUtils.js ---
+    // ==========================================
+// ==========================================
+// --- 🎧 語音引擎與防休眠工具 (audioUtils.js) ---
+// ==========================================
+
+// 獲取 Native Capacitor TextToSpeech 外掛
+window.getTtsPlugin = () => {
+  if (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.TextToSpeech) {
+    return window.Capacitor.Plugins.TextToSpeech;
+  }
+  return null;
+};
+
+// 異步延遲工具
+window.delayAsync = (ms, signal) => {
+  return new Promise((resolve) => {
+    if (signal && signal.aborted) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(() => {
+      resolve();
+    }, ms);
+
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    }
+  });
+};
+
+// 基礎單字發音
+window.speakText = async (text, speechRate = 1.0, speechEnabled = true, isManual = false) => {
+  console.log('TTS speak called. Text:', text, 'isManual:', isManual, 'speechEnabled:', speechEnabled);
+  if (!isManual && !speechEnabled) {
+    console.log('TTS speak aborted: speechEnabled is false');
+    return;
+  }
+
+  const tts = window.getTtsPlugin();
+  if (tts) {
+    console.log('TTS using native Capacitor plugin for:', text);
+    try {
+      await tts.stop();
+      await tts.speak({
+        text: text,
+        lang: 'en-US',
+        rate: speechRate,
+        pitch: 1.0,
+        volume: 1.0,
+        category: 'ambient'
+      });
+      console.log('TTS native speak completed:', text);
+    } catch (err) {
+      console.error('TTS native speak error:', err);
+    }
+  } else if (typeof window !== 'undefined' && 'speechSynthesis' in window && window.speechSynthesis) {
+    console.log('TTS using Web Speech API');
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US';
+    utterance.rate = speechRate;
+    utterance.onstart = () => console.log('TTS speak started:', text);
+    utterance.onend = () => console.log('TTS speak ended:', text);
+    utterance.onerror = (e) => {
+      console.error('TTS speak error event:', e.error, e);
+    };
+    window.speechSynthesis.speak(utterance);
+  } else {
+    // Fallback to Google Translate TTS API via HTML5 Audio
+    console.log('TTS using Google Translate fallback for:', text);
+    try {
+      const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=en&client=tw-ob&q=${encodeURIComponent(text)}`;
+      const audio = new Audio(url);
+      audio.play().catch(err => console.error('Google TTS Play Error:', err));
+    } catch (e) {
+      console.error('Google TTS Fallback failed:', e);
+    }
+  }
+};
+
+// 聽讀特訓異步發音 (支援 AbortSignal 與 Voice 選擇)
+window.speakAsync = (text, lang, voiceName, speechRate = 1.0, audioSettings = {}, signal = null) => {
+  return new Promise(async (resolve) => {
+    if (signal && signal.aborted) {
+      resolve();
+      return;
+    }
+
+    const tts = window.getTtsPlugin();
+    const rate = speechRate;
+
+    if (tts) {
+      console.log('TTS speakAsync native for:', text);
+      try {
+        await tts.stop();
+        if (signal && signal.aborted) return resolve();
+
+        const onAbort = async () => {
+          try { await tts.stop(); } catch (e) {}
+          resolve();
+        };
+        if (signal) signal.addEventListener('abort', onAbort);
+
+        await tts.speak({
+          text: text,
+          lang: lang || 'en-US',
+          rate: rate,
+          pitch: 1.0,
+          volume: (audioSettings.volume ?? 80) / 100,
+          category: 'ambient'
+        });
+
+        if (signal) signal.removeEventListener('abort', onAbort);
+        console.log('TTS speakAsync native speak completed:', text);
+        resolve();
+      } catch (err) {
+        console.error('TTS speakAsync native speak error:', err);
+        resolve();
+      }
+    } else if (typeof window !== 'undefined' && 'speechSynthesis' in window && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = lang;
+      utterance.rate = rate;
+      utterance.volume = (audioSettings.volume ?? 80) / 100;
+
+      const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+      if (voiceName && !isIOS) {
+        const allVoices = window.speechSynthesis.getVoices();
+        const voice = allVoices.find(v => v.name === voiceName);
+        if (voice) {
+          utterance.voice = voice;
+          console.log('TTS speakAsync using voice:', voiceName);
+        } else {
+          console.warn('TTS speakAsync voice not found:', voiceName);
+        }
+      }
+
+      utterance.onstart = () => console.log('TTS speakAsync started:', text);
+      utterance.onend = () => {
+        console.log('TTS speakAsync ended:', text);
+        resolve();
+      };
+      utterance.onerror = (e) => {
+        console.error('TTS speakAsync error event:', e.error, e);
+        resolve();
+      };
+
+      const onAbort = () => {
+        window.speechSynthesis.cancel();
+        resolve();
+      };
+      if (signal) signal.addEventListener('abort', onAbort);
+
+      window.speechSynthesis.speak(utterance);
+    } else {
+      // Fallback to Google Translate TTS API via HTML5 Audio
+      console.log('TTS speakAsync using Google Translate fallback for:', text);
+      try {
+        const tl = lang ? lang.split('-')[0].toLowerCase() : 'en';
+        const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${tl}&client=tw-ob&q=${encodeURIComponent(text)}`;
+        const audio = new Audio(url);
+        audio.volume = (audioSettings.volume ?? 80) / 100;
+
+        const onAudioEnd = () => {
+          resolve();
+        };
+
+        audio.onended = onAudioEnd;
+        audio.onerror = (err) => {
+          console.error('Google TTS speakAsync Play Error:', err);
+          resolve();
+        };
+
+        if (signal) {
+          signal.addEventListener('abort', () => {
+            audio.pause();
+            resolve();
+          });
+        }
+
+        audio.play().catch(err => {
+          console.error('Google TTS play failed:', err);
+          resolve();
+        });
+      } catch (e) {
+        console.error('Google TTS speakAsync Fallback failed:', e);
+        resolve();
+      }
+    }
+  });
+};
+
+
+    // ==========================================
+    // --- File: www/js/utils/sessionUtils.js ---
+    // ==========================================
+// ==========================================
+// --- 🧮 特訓演算法與狀態計算 (sessionUtils.js) ---
+// ==========================================
+
+// 計算當前狀態指示燈號與顏色
+window.calculateIndicator = (mistakesTotal, historicalMistakesCount = 0) => {
+  const currentTotal = mistakesTotal || 0;
+  if (currentTotal === 0 && historicalMistakesCount === 0) {
+    return {
+      status: 'safe',
+      icon: '🟢',
+      title: '完美狀態',
+      color: 'text-emerald-400',
+      bg: 'bg-emerald-950/40',
+      border: 'border-emerald-800/60'
+    };
+  } else if (currentTotal <= 5) {
+    return {
+      status: 'warning',
+      icon: '🟡',
+      title: '輕度積壓',
+      color: 'text-amber-400',
+      bg: 'bg-amber-950/40',
+      border: 'border-amber-800/60'
+    };
+  } else {
+    return {
+      status: 'danger',
+      icon: '🔴',
+      title: '錯題警戒',
+      color: 'text-rose-400',
+      bg: 'bg-rose-950/40',
+      border: 'border-rose-800/60'
+    };
+  }
+};
+
+// 獲取本日進度單字清單
+window.getDailyWordsList = (vocabList, currentDay, wordsPerDay) => {
+  if (!vocabList || vocabList.length === 0) return [];
+  const startIdx = (currentDay - 1) * wordsPerDay;
+  return vocabList.slice(startIdx, startIdx + wordsPerDay);
+};
+
+// 獲取過濾搜尋單字清單
+window.getFilteredVocabList = (vocabList, query) => {
+  if (!vocabList) return [];
+  if (!query || !query.trim()) return vocabList;
+  const q = query.trim().toLowerCase();
+  return vocabList.filter(w => 
+    w.en.toLowerCase().includes(q) || 
+    w.zh.includes(q) || 
+    (w.pos && w.pos.toLowerCase().includes(q))
+  );
+};
+
+
+    // ==========================================
     // --- File: www/js/hooks/useVocabState.js ---
     // ==========================================
 // ==========================================
@@ -932,13 +1275,11 @@ window.Dashboard = ({
 
 
     // ==========================================
-    // --- File: www/js/components/Sessions.js ---
+    // --- File: www/js/components/sessions/ScanningSession.js ---
     // ==========================================
 // ==========================================
-// --- ⚡ 特訓模組 Sessions 元件 ---
+// --- ⚡ 第一關：快速篩選 (ScanningSession Component) ---
 // ==========================================
-
-// --- 第一關：快速篩選 (Scanning Session) ---
 window.ScanningSession = ({
   queue,
   currentWord,
@@ -1054,7 +1395,12 @@ window.ScanningSession = ({
 };
 
 
-// --- 第二關 & 大會考：強制填空盲測 (Spelling Session) ---
+    // ==========================================
+    // --- File: www/js/components/sessions/SpellingSession.js ---
+    // ==========================================
+// ==========================================
+// --- ✍️ 第二關 & 大會考：強制填空盲測 (SpellingSession Component) ---
+// ==========================================
 window.SpellingSession = ({
   queue,
   currentWord,
@@ -1149,22 +1495,22 @@ window.SpellingSession = ({
 
         <form onSubmit={handleSpellingSubmit} className="space-y-4 max-w-md mx-auto">
           <div className="flex justify-between items-center min-h-[24px]">
-            <label className="text-xs text-slate-400 font-medium">請拼寫完整單字：</label>
+            <label className="text-xs text-slate-400 font-medium">拼寫單字：</label>
             {typoCount === 1 && !mustTypeCorrectly && (
               <span className="text-[10px] font-bold text-amber-400 bg-amber-950/40 px-2 py-0.5 rounded border border-amber-900/60 animate-pulse">
-                ⚠️ 手滑警告！再錯將強迫重抄
+                ⚠️ 手滑警告!
               </span>
             )}
             {mustTypeCorrectly && (
               <span className="text-[10px] font-bold text-red-400 bg-red-950/40 px-2 py-0.5 rounded border border-red-900/60 animate-pulse">
-                ❌ 失憶判定！請重抄 (剩餘嘗試: {3 - copyFailCount} 次)
+                ❌ 請重抄 (剩餘嘗試: {3 - copyFailCount} 次)
               </span>
             )}
           </div>
 
           {mustTypeCorrectly && (
             <div className="bg-slate-900 p-4 rounded-xl border border-emerald-900/50 mb-2">
-              <span className="text-xs text-slate-500 block mb-1">神經鏈結斷裂，請看著答案親手輸入一次：</span>
+              <span className="text-xs text-slate-500 block mb-1">請輸入一次：</span>
               <span className={`${
                 currentWord.en.length <= 8 ? 'text-3xl' :
                 currentWord.en.length <= 12 ? 'text-2xl' :
@@ -1250,7 +1596,12 @@ window.SpellingSession = ({
 };
 
 
-// --- 第三階段：任務完成 (Summary Session) ---
+    // ==========================================
+    // --- File: www/js/components/sessions/SummarySession.js ---
+    // ==========================================
+// ==========================================
+// --- 🎉 第三階段：任務完成 (SummarySession Component) ---
+// ==========================================
 window.SummarySession = ({
   sessionType,
   goToNextDay
@@ -1273,6 +1624,18 @@ window.SummarySession = ({
     </div>
   );
 };
+
+
+    // ==========================================
+    // --- File: www/js/components/Sessions.js ---
+    // ==========================================
+// ==========================================
+// --- ⚡ 特訓模組 Sessions 元件入口 (Sessions.js) ---
+// ==========================================
+// 模組解耦聲明：
+// 1. window.ScanningSession -> www/js/components/sessions/ScanningSession.js
+// 2. window.SpellingSession -> www/js/components/sessions/SpellingSession.js
+// 3. window.SummarySession  -> www/js/components/sessions/SummarySession.js
 
 
     // ==========================================

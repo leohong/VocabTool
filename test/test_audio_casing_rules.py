@@ -151,7 +151,7 @@ def run_tests():
                 selects[1].dispatchEvent(new Event('change', { bubbles: true }));
             }
             
-            const startBtn = Array.from(modal.querySelectorAll('button')).find(b => b.textContent.includes('開始聽讀特訓'));
+            const startBtn = Array.from(modal.querySelectorAll('button')).find(b => b.textContent.includes('開始'));
             if (startBtn) startBtn.click();
         """)
         time.sleep(2.5)

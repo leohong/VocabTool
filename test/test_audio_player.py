@@ -105,7 +105,7 @@ def run_tests():
         select_spelling_pause = Select(spelling_pause_el)
         select_spelling_pause.select_by_value("0")
                 
-        btn_start = driver.find_element(By.XPATH, "//button[contains(., '\u958b\u59cb\u807d\u8b80\u7279\u8a13')]")
+        btn_start = driver.find_element(By.XPATH, "//button[contains(., '開始')]")
         btn_start.click()
         
         player_title = wait.until(
