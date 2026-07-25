@@ -9,6 +9,45 @@
 1. **Context 即記憶體 (Context is RAM)**：對話歷史中的每一行字、每一次 `ls`/`dir`、每一次大檔案讀取，都會在後續對話中反覆傳送，造成 Token 呈指數級增長。
 2. **精準加載，即時釋放 (Just-in-Time Context)**：不要塞入不相關的檔案。只在需要時讀取特定程式碼區塊。
 3. **限流輸出 (Output Limitation)**：防止編譯器或測試套件將數萬行的日誌「吐」回給 AI 閱讀。
+4. **主副視窗隔離 (Subagent Isolation)**：將編譯與測試交給獨立子視窗/子任務處理，執行完即拋棄過程日誌，絕不塞滿主設計視窗。
+
+---
+
+## 🧱 雙階 Subagent 隔離與全自動化開發架構 (Subagent Isolation & Automation Architecture)
+
+為了解決編譯日誌、測試輸出與二進位檔案雜訊塞滿主要對話視窗（Main Thread）的問題，本指南導入 **主副 Agent 物理隔離與單指令自動化** 機制：
+
+```mermaid
+graph TD
+    User([使用者 User]) <--> MainAgent[主視窗 Main Agent<br/>專注架構設計與程式碼撰寫<br/>Context < 1,000 行]
+    
+    MainAgent -->|分派建置任務| BuildSub[Build Subagent / 背景任務<br/>獨立 Context 記憶體]
+    MainAgent -->|分派測試任務| TestSub[Test Subagent / 背景任務<br/>獨立 Context 記憶體]
+    
+    BuildSub -->|跑完打包與Gradle| LogDis1[拋棄數萬行編譯 Log]
+    TestSub -->|跑完Selenium測試| LogDis2[拋棄截圖與DOM Trace]
+    
+    LogDis1 -->|僅回傳 1 行狀態| MainAgent
+    LogDis2 -->|僅回傳 1 行狀態| MainAgent
+```
+
+### 1. 🧠 主視窗 (Main Agent) 職責：極簡架構大腦
+*   **純粹專注**：僅負責邏輯規劃、模組設計與程式碼寫入。
+*   **記憶體保護**：不直接在主視窗貼出巨大的編譯 Dump。永遠維持 Context Window 在最乾淨的狀態。
+
+### 2. 🤖 子視窗 / 子任務 (Worker Subagents) 職責：髒活沙盒隔離
+*   **Build Subagent (編譯與部署專用)**：
+    - 在獨立的背景 Task 或 Subagent 中執行 `npm run build` ➔ `cap sync` ➔ `gradlew assembleDebug` ➔ `adb install`。
+    - **所有繁雜的 Compile Warnings、SDK 檢查訊息均在 Subagent 內部被吸收處置。**
+    - 任務結束後，Subagent 的 Context **直接銷毀**，僅將 `✅ APK 打包成功並部署至手機` 之 1 行結果傳回主視窗。
+*   **Test Subagent (自動化測試專用)**：
+    - 在獨立的背景 Task 中啟動 Headless Chrome 跑 Python Selenium 測試。
+    - 測試期間產生的 HTML 頁面源碼、失敗截圖、DOM Element 追蹤全部留存於沙盒。
+    - 任務結束後，僅回傳 `✅ 5 大 E2E 測試全數通過`。
+
+### 3. ⚡ 單指令自動化包裝 (One-Click Script Wrapper)
+*   將多步驟 CLI 操作封裝為單一 Node.js / Python 腳本（如 `node scripts/dev_deploy.js` 或 `python scripts/run_tests.py`）。
+*   主 Agent 只需下達 1 行命令，即可由本機腳本吞吐所有複雜操作，只傳回 JSON 狀態碼：`{"status": "PASS"}`。
 
 ---
 
