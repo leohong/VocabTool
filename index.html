@@ -1362,34 +1362,11 @@ window.AudioPlayer = ({
           } mb-4 select-none`}>
             {(() => {
               const wordEn = currentWord?.en || '';
-              const spellingIndices = [];
-              let spellIdx = 0;
-              for (let i = 0; i < wordEn.length; i++) {
-                const char = wordEn[i].toLowerCase();
-                if (/[a-z']/.test(char)) {
-                  spellingIndices.push(spellIdx);
-                  spellIdx++;
-                } else {
-                  spellingIndices.push(-1);
-                }
-              }
 
               return wordEn.split('').map((char, index) => {
-                const sIdx = spellingIndices[index];
-                const isActive = audioSubStep === 'spelling' && sIdx === activeSpellingChar;
-                const isSpelled = audioSubStep === 'spelling' && sIdx !== -1 && sIdx < activeSpellingChar;
-                const isNotSpelledYet = audioSubStep === 'spelling' && sIdx !== -1 && sIdx > activeSpellingChar;
-
-                // 決定顯示的字元 (盲聽模式下未拼讀的字元顯示為圓點)
                 let displayChar = char;
                 if (blindMode) {
-                  if (audioSubStep === 'spelling') {
-                    if (isNotSpelledYet || sIdx === -1) {
-                      displayChar = char === ' ' ? '\u00A0' : '•';
-                    }
-                  } else {
-                    displayChar = char === ' ' ? '\u00A0' : '•';
-                  }
+                  displayChar = char === ' ' ? '\u00A0' : '•';
                 } else {
                   if (char === ' ') {
                     displayChar = '\u00A0';
@@ -1405,20 +1382,10 @@ window.AudioPlayer = ({
                 else if (len > 20) baseSizeClass = "text-lg sm:text-xl";
 
                 let charClass = `${baseSizeClass} font-black font-mono transition-all duration-150 `;
-                if (audioSubStep === 'spelling') {
-                  if (isActive) {
-                    charClass += "text-indigo-400 scale-125 drop-shadow-[0_0_10px_rgba(129,140,248,0.8)]";
-                  } else if (isSpelled) {
-                    charClass += "text-slate-100";
-                  } else {
-                    charClass += "text-slate-600";
-                  }
+                if (blindMode) {
+                  charClass += "text-slate-500 opacity-80";
                 } else {
-                  if (blindMode) {
-                    charClass += "text-slate-500 opacity-80";
-                  } else {
-                    charClass += "text-slate-100";
-                  }
+                  charClass += "text-slate-100";
                 }
 
                 return (
@@ -3547,42 +3514,8 @@ function App() {
         setAudioSubStep('spelling');
         setAudioStatusText(`拼讀字母...`);
         const chars = word.en.toLowerCase().replace(/[^a-z']/g, '').split('');
-
-        let spellingFinished = false;
-
-        // Dynamic highlight delay checking if the audio has completed early
-        const delayHighlight = (ms) => {
-          return new Promise((resolve) => {
-            const start = Date.now();
-            const timer = setInterval(() => {
-              if (spellingFinished || signal.aborted || Date.now() - start >= ms) {
-                clearInterval(timer);
-                resolve();
-              }
-            }, 25);
-          });
-        };
-
-        const runHighlight = async () => {
-          const startDelayMs = Math.round((settings.spellingStartDelay !== undefined ? settings.spellingStartDelay : 0.15) * 1000);
-          if (startDelayMs > 0) {
-            await delayHighlight(startDelayMs);
-          }
-          const charDuration = Math.round(480 / (speechRate || 1));
-          for (let cIdx = 0; cIdx < chars.length; cIdx++) {
-            if (spellingFinished || signal.aborted) break;
-            setActiveSpellingChar(cIdx);
-            await delayHighlight(charDuration + (settings.spellingPause ?? 0) * 1000);
-          }
-          setActiveSpellingChar(-1);
-        };
-
-        runHighlight();
-
         const spellingStr = chars.join(', ');
         await speakAsync(spellingStr, 'en-US', settings.enVoiceName, signal);
-        spellingFinished = true;
-        setActiveSpellingChar(-1);
         if (signal.aborted) break;
         await delayAsync(500, signal);
 
