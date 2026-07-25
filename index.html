@@ -2876,10 +2876,70 @@ function App() {
   const inputRef = useRef(null);
 
   const [appLoaded, setAppLoaded] = useState(false);
+  const [otaUpdating, setOtaUpdating] = useState(false);
+
+  const getUpdaterPlugin = () => {
+    if (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorUpdater) {
+      return window.Capacitor.Plugins.CapacitorUpdater;
+    }
+    return null;
+  };
+
+  const triggerOtaCheck = async (updater) => {
+    try {
+      const UPDATE_CONFIG_URL = 'https://raw.githubusercontent.com/leohong/VocabTool-App/main/update.json';
+      const response = await fetch(UPDATE_CONFIG_URL, { cache: 'no-store' });
+      if (!response.ok) return;
+      const remoteConfig = await response.json();
+      
+      if (remoteConfig.version && remoteConfig.url) {
+        const isNewer = (remoteVer, localVer) => {
+          const parse = (v) => v.split('.').map(n => parseInt(n, 10) || 0);
+          const [rMajor, rMinor, rPatch] = parse(remoteVer);
+          const [lMajor, lMinor, lPatch] = parse(localVer);
+          if (rMajor !== lMajor) return rMajor > lMajor;
+          if (rMinor !== lMinor) return rMinor > lMinor;
+          return rPatch > lPatch;
+        };
+
+        if (isNewer(remoteConfig.version, APP_VERSION)) {
+          if (window.confirm(`發現新版特訓模組 (v${remoteConfig.version})，是否立即下載更新？\n（更新將重啟 App 生效）`)) {
+            setOtaUpdating(true);
+            try {
+              console.log('[Update] Downloading package:', remoteConfig.url);
+              const downloadResult = await updater.download({
+                url: remoteConfig.url,
+                version: remoteConfig.version
+              });
+              console.log('[Update] Download complete, applying update...');
+              await updater.set(downloadResult);
+            } catch (err) {
+              console.error('[Update] OTA failed:', err);
+              alert(`更新下載失敗：${err.message || err}`);
+              setOtaUpdating(false);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[Update] Update check skipped (offline or network error):', err.message || err);
+    }
+  };
 
   // --- 初始化異步載入所有存檔與偏好設定 ---
   useEffect(() => {
     async function loadConfig() {
+      // 宣告 App 已正常開機就緒（防回退安全機制）
+      const updater = getUpdaterPlugin();
+      if (updater) {
+        try {
+          await updater.notifyAppReady();
+          console.log('[Update] notifyAppReady declared.');
+        } catch (err) {
+          console.error('[Update] notifyAppReady failed:', err);
+        }
+      }
+
       // 1. 初始化資料庫與狀態
       await initAllData();
 
@@ -2908,6 +2968,13 @@ function App() {
       }
 
       setAppLoaded(true);
+
+      // 背景啟動更新檢查
+      if (updater) {
+        setTimeout(() => {
+          triggerOtaCheck(updater);
+        }, 3000);
+      }
     }
     loadConfig();
   }, []);
@@ -4448,6 +4515,18 @@ function App() {
   // ----------------------------------------
   // --- 6. 畫面渲染 (UI 分派) ---
   // ----------------------------------------
+  if (otaUpdating) {
+    return (
+      <div className="w-full max-w-md mx-auto flex flex-col items-center justify-center min-h-[60vh] bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-2xl text-center space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
+        <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+        <div>
+          <h2 className="text-2xl font-black text-indigo-400 tracking-wide">下載特訓模組中</h2>
+          <p className="text-slate-400 text-sm mt-2 font-medium">正在取得最新版本，完成後將自動載入...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!appLoaded) {
     return (
       <div className="w-full max-w-md mx-auto flex flex-col items-center justify-center min-h-[60vh] bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-2xl text-center space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
