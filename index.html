@@ -1546,10 +1546,26 @@ window.AudioPlayer = ({
     // --- File: www/js/components/Modals.js ---
     // ==========================================
 // ==========================================
-// --- 🪟 各類彈窗 Modals 元件庫 ---
+// --- 🪟 各類彈窗 Modals 元件庫 (已極致微模組化拆分) ---
 // ==========================================
+// 所有 Modal 已經移至 www/js/components/modals/ 目錄下：
+// - AudioSetupModal.js
+// - PreviewModal.js
+// - MistakeModal.js
+// - HistoryModal.js
+// - DictModal.js
+// - AllPreviewModal.js
+// - EditWordModal.js
+// - ImportOptionsModal.js
+// - LicensesModal.js
 
-// --- 1. 聽音特訓設定 Modal ---
+
+    // ==========================================
+    // --- File: www/js/components/modals/AudioSetupModal.js ---
+    // ==========================================
+// ==========================================
+// --- 🪟 AudioSetupModal 元件 ---
+// ==========================================
 window.AudioSetupModal = ({
   showAudioSetupModal,
   setShowAudioSetupModal,
@@ -1872,6 +1888,14 @@ window.AudioSetupModal = ({
 
 
 // --- 2. 本日單字預覽 Modal ---
+
+
+    // ==========================================
+    // --- File: www/js/components/modals/PreviewModal.js ---
+    // ==========================================
+// ==========================================
+// --- 🪟 PreviewModal 元件 ---
+// ==========================================
 window.PreviewModal = ({
   showPreviewModal,
   setShowPreviewModal,
@@ -1944,6 +1968,14 @@ window.PreviewModal = ({
 
 
 // --- 3. 當前錯題集中營 Modal ---
+
+
+    // ==========================================
+    // --- File: www/js/components/modals/MistakeModal.js ---
+    // ==========================================
+// ==========================================
+// --- 🪟 MistakeModal 元件 ---
+// ==========================================
 window.MistakeModal = ({
   showMistakeModal,
   setShowMistakeModal,
@@ -2055,6 +2087,14 @@ window.MistakeModal = ({
 
 
 // --- 4. 歷史殿堂 Modal ---
+
+
+    // ==========================================
+    // --- File: www/js/components/modals/HistoryModal.js ---
+    // ==========================================
+// ==========================================
+// --- 🪟 HistoryModal 元件 ---
+// ==========================================
 window.HistoryModal = ({
   showHistoryModal,
   setShowHistoryModal,
@@ -2120,6 +2160,14 @@ window.HistoryModal = ({
 
 
 // --- 5. 查字典與手動加字 Modal ---
+
+
+    // ==========================================
+    // --- File: www/js/components/modals/DictModal.js ---
+    // ==========================================
+// ==========================================
+// --- 🪟 DictModal 元件 ---
+// ==========================================
 window.DictModal = ({
   showDictModal,
   setShowDictModal,
@@ -2426,6 +2474,14 @@ window.DictModal = ({
 
 
 // --- 6. 全字庫單字預覽 Modal ---
+
+
+    // ==========================================
+    // --- File: www/js/components/modals/AllPreviewModal.js ---
+    // ==========================================
+// ==========================================
+// --- 🪟 AllPreviewModal 元件 ---
+// ==========================================
 window.AllPreviewModal = ({
   showAllPreviewModal,
   setShowAllPreviewModal,
@@ -2551,6 +2607,14 @@ window.AllPreviewModal = ({
 
 
 // --- 7. 編輯單字 Modal ---
+
+
+    // ==========================================
+    // --- File: www/js/components/modals/EditWordModal.js ---
+    // ==========================================
+// ==========================================
+// --- 🪟 EditWordModal 元件 ---
+// ==========================================
 window.EditWordModal = ({
   editingIndex,
   setEditingIndex,
@@ -2668,6 +2732,14 @@ window.EditWordModal = ({
 };
 
 // --- 9. 選擇匯入來源 Modal (ImportOptionsModal) ---
+
+
+    // ==========================================
+    // --- File: www/js/components/modals/ImportOptionsModal.js ---
+    // ==========================================
+// ==========================================
+// --- 🪟 ImportOptionsModal 元件 ---
+// ==========================================
 window.ImportOptionsModal = ({
   showImportOptionsModal,
   setShowImportOptionsModal,
@@ -2758,6 +2830,14 @@ window.ImportOptionsModal = ({
 };
 
 // --- 10. 開源軟體授權宣告 Modal ---
+
+
+    // ==========================================
+    // --- File: www/js/components/modals/LicensesModal.js ---
+    // ==========================================
+// ==========================================
+// --- 🪟 LicensesModal 元件 ---
+// ==========================================
 window.LicensesModal = ({ showLicensesModal, setShowLicensesModal }) => {
   if (!showLicensesModal) return null;
 
@@ -2842,7 +2922,6 @@ window.LicensesModal = ({ showLicensesModal, setShowLicensesModal }) => {
     </div>
   );
 };
-
 
 
     // ==========================================
