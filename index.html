@@ -2146,21 +2146,6 @@ window.AudioSetupModal = ({
               </div>
 
               <div className="flex justify-between items-center">
-                <span className="text-slate-300" title="補償 TTS 語音發音啟動延遲，使視覺字母高亮與聲音完全同步">閃爍啟動延遲：</span>
-                <select
-                  value={audioSettings.spellingStartDelay !== undefined ? audioSettings.spellingStartDelay : 0.15}
-                  onChange={(e) => updateSetting('spellingStartDelay', parseFloat(e.target.value))}
-                  className="bg-slate-950 border border-slate-700 text-indigo-300 rounded-lg px-2 py-1 focus:outline-none font-mono"
-                >
-                  {[0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5].map(n => (
-                    <option key={n} value={n}>
-                      {n === 0 ? '無延遲' : `${Math.round(n * 1000)}ms`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex justify-between items-center">
                 <span className="text-slate-300">播放音量 (0~100)：</span>
                 <input
                   type="range"
