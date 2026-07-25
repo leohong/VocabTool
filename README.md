@@ -106,5 +106,5 @@
 * **樣式**：Tailwind CSS (via CDN)
 * **圖示**：內建客製化 SVG Icons
 * **語音**：Web Speech API (原生瀏覽器 TTS，美式英語語音)
-* **儲存**：HTML5 Web Storage API (localStorage)
+* **儲存**：persistentStorage 儲存層（Web 端自動 Promise 降級使用 `localStorage`，保障離線執行）
 * **測試**：Python + Selenium Headless Chrome E2E 自動化測試
