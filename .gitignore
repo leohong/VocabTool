@@ -4,3 +4,7 @@ Thumbs.db
 .gitconfig
 *.log
 temp_sync/
+__pycache__/
+*_failure.png
+failure_source.html
+test_error.txt
