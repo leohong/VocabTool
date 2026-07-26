@@ -3290,7 +3290,7 @@ function App() {
   // ----------------------------------------
   // --- 0. 版本管理常數 (三碼版本號規則) ---
   // ----------------------------------------
-  const APP_VERSION = "1.7.4";
+  const APP_VERSION = "1.7.5";
   const DISPLAY_VERSION = APP_VERSION.split('.').slice(0, 2).join('.');
 
   // ----------------------------------------
@@ -4068,7 +4068,7 @@ function App() {
     if (baseWords.length === 0) return alert("字典為空，請先匯入字庫！");
 
     const initializedWords = baseWords.map(w => ({ ...w, _hasCountedMistake: false }));
-    const combined = [...initializedWords, ...ghostWords].sort(() => 0.5 - Math.random());
+    const combined = [...initializedWords, ...ghostWords];
 
     setSessionType('daily');
     setCurrentSessionWords(combined);
