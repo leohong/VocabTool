@@ -1,16 +1,16 @@
 # 🤖 VocabTool-App AI Agent Workspace Instructions & Knowledge
 
-本文件記錄 `VocabTool-App` 專案的核心開發規範、架構決策與運作流程。在任何電腦開開啟本專案時，AI Agent 均會自動載入本規範以維持無縫工作接續。
+本文件記錄 `VocabTool-App` 專案的核心開發規範、架構決策與運作流程。**在每次開啟新 Session / 對話時，AI Agent 均必須自動確認、讀取並嚴格遵守本規範與 `.agents/` 資料夾內的所有指引項目**。
 
 ---
 
 ## 1. 專案架構規範 (Clean Modular Architecture)
 
 *   **開發源碼目錄 (`www/js/`)**：
-    *   `utils/`：純演算法與 API 工具（`textUtils.js`, `dictionaryApi.js`）。
+    *   `utils/`：純演算法、API 工具、備份匯出與發音（`textUtils.js`, `dictionaryApi.js`, `exportImportUtils.js`, `audioUtils.js`, `sessionUtils.js`）。
     *   `hooks/`：React 業務邏輯與狀態（`useVocabState.js`）。
-    *   `components/`：1:1 原裝 UI 視覺元件 (`Header.js`, `Dashboard.js`, `Sessions.js`, `AudioPlayer.js`, `Modals.js`)。
-    *   `app.js`：核心生命週期進入點。
+    *   `components/`：1:1 原裝 UI 視覺元件與關卡模組 (`Header.js`, `Dashboard.js`, `Sessions.js`, `AudioPlayer.js`, `Modals.js`, `sessions/ScanningSession.js`, `sessions/SpellingSession.js`, `sessions/SummarySession.js`)。
+    *   `app.js`：核心生命週期與路由進入點。
 *   **發布與編譯檔 (`www/index.html`)**：
     *   由建置腳本 `scripts/build.js` 自動生成。
     *   **原因**：Android WebView (`file://`) 嚴格禁止 AJAX 跨檔讀取外部 JSX。預編譯打包可確保離線免 CORS 錯誤。
@@ -55,6 +55,7 @@
    * **本地開發測試期**：進行功能開發、重構或 Bug 修復時，**版本號保持不動**，專注於程式碼修改與測試，切勿在本地微調時隨意遞增版號。
    * **正式發布 / Git Push 階段**：當功能測試完成、使用者明確指示準備 Git Push 或發布正式版時，方可一次性統一遞增版本號。
    * **進版同步檔案**：主變更 (MAJOR)、功能增刪 (MINOR)、Bug 修復 (PATCH) 與 Android `versionCode` (單調遞增) 必須同步修改於 `app.js`、`build.gradle` 與 `package.json`，並與 Git Tag 保持 100% 一致。規格文件如 `SPECIFICATION.md` 僅在規格內文有實質修改時方可進版。
+4. **💡 先說明原因再進行動作**：收到使用者回報的問題、警告或異常時，務必先向使用者清楚說明發生的根本原因 (Root Cause) 與預計的修復對策，確認思路後再執行相應的檔案修改與指令操作。
 
 ---
 
@@ -74,10 +75,11 @@
 
 ---
 
-## 6. 完整技術手冊 (Full Documentation)
+## 6. 完整技術與 Token 指引手冊 (Full Documentation & Token Saver)
 
-關於更詳細的聽讀特訓機制（盲聽、逐字拼讀高亮）、手滑強制重寫邏輯、CORS WebView 建置原因及各模組詳細依賴關係，請參閱根目錄的：
-*   **技術手冊**：[DEVELOPMENT_GUIDE.md](file:///d:/MyProjects/VocabTool-App/DEVELOPMENT_GUIDE.md)
+關於更詳細的聽讀特訓機制（盲聽、逐字拼讀高亮）、手滑強制重寫邏輯、CORS WebView 建置原因、各模組詳細依賴關係及 Token 節省技巧，請參閱 `.agents/` 目錄：
+*   **技術手冊**：[DEVELOPMENT_GUIDE.md](file:///e:/ProjectCode/VocabTool-App/.agents/DEVELOPMENT_GUIDE.md)
+*   **Token 節省指南**：[AI_AGENT_TOKEN_SAVER.md](file:///e:/ProjectCode/VocabTool-App/.agents/AI_AGENT_TOKEN_SAVER.md)
 
 ---
 
