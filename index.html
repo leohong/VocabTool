@@ -4112,7 +4112,36 @@ function App() {
     return { baseWords, ghostWords };
   };
 
-  const startTodaySession = () => {
+  const startTodaySession = async () => {
+    const tempSession = await window.persistentStorage.getSetting(`vocab_tempSession_${dbName}`, null);
+    if (tempSession && tempSession.queue && tempSession.queue.length > 0 && tempSession.date === new Date().toDateString()) {
+      if (window.confirm("偵測到您有暫停存檔的特訓進度，是否繼續從上次暫停的地方開始？\n（選擇「取消」將放棄暫存進度並重新開始）")) {
+        setSessionType(tempSession.sessionType || 'daily');
+        setCurrentSessionWords(tempSession.currentSessionWords || []);
+        setQueue(tempSession.queue);
+        if (tempSession.spellingState) {
+          setUserInput(tempSession.spellingState.userInput || '');
+          setTypoCount(tempSession.spellingState.typoCount || 0);
+          setMustTypeCorrectly(!!tempSession.spellingState.mustTypeCorrectly);
+          setCopyFailCount(tempSession.spellingState.copyFailCount || 0);
+          if (tempSession.queue[0] && tempSession.spellingState.currentWordHasCountedMistake) {
+            tempSession.queue[0]._hasCountedMistake = true;
+          }
+        }
+        if (tempSession.audioState) {
+          if (tempSession.audioState.audioQueue) setAudioQueue(tempSession.audioState.audioQueue);
+          if (typeof tempSession.audioState.currentAudioIndex === 'number') setCurrentAudioIndex(tempSession.audioState.currentAudioIndex);
+          if (tempSession.audioState.audioSource) setAudioSource(tempSession.audioState.audioSource);
+          if (tempSession.audioState.audioRange) setAudioRange(tempSession.audioState.audioRange);
+        }
+        setCurrentWord(tempSession.queue[0]);
+        setView(tempSession.view || 'scanning');
+        return;
+      } else {
+        await window.persistentStorage.setSetting(`vocab_tempSession_${dbName}`, null);
+      }
+    }
+
     const { baseWords, ghostWords } = getDailyWords();
     if (baseWords.length === 0) return alert("字典為空，請先匯入字庫！");
 
@@ -4355,8 +4384,31 @@ function App() {
     }
   };
 
-  const handleExitSession = () => {
-    if (window.confirm("確定要暫停離開嗎？系統已為您存檔。")) setView('dashboard');
+  const handleExitSession = async () => {
+    if (window.confirm("確定要暫停離開嗎？系統已為您存檔。")) {
+      const sessionData = {
+        date: new Date().toDateString(),
+        view,
+        sessionType,
+        queue,
+        currentSessionWords,
+        spellingState: {
+          userInput,
+          typoCount,
+          mustTypeCorrectly,
+          copyFailCount,
+          currentWordHasCountedMistake: currentWord?._hasCountedMistake || false
+        },
+        audioState: {
+          currentAudioIndex,
+          audioQueue,
+          audioSource,
+          audioRange
+        }
+      };
+      await window.persistentStorage.setSetting(`vocab_tempSession_${dbName}`, sessionData);
+      setView('dashboard');
+    }
   };
 
   const goToNextDay = () => {
