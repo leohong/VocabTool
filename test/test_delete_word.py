@@ -15,13 +15,28 @@ def run_tests():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--window-size=1200,800")
     
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.abspath(os.path.join(script_dir, ".."))
+    www_dir = os.path.join(parent_dir, "www") if os.path.exists(os.path.join(parent_dir, "www")) else parent_dir
+
+    import socketserver
+    import http.server
+    import threading
+
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=www_dir, **kwargs)
+
+    socketserver.TCPServer.allow_reuse_address = True
+    httpd = socketserver.TCPServer(("127.0.0.1", 0), Handler)
+    port = httpd.server_address[1]
+    server_thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    server_thread.start()
+
     driver = webdriver.Chrome(options=chrome_options)
     
     try:
-        # Get path of index.html relative to this script's directory
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        html_path = os.path.abspath(os.path.join(script_dir, "..", "index.html"))
-        file_url = f"file:///{html_path.replace(os.sep, '/')}"
+        file_url = f"http://127.0.0.1:{port}/index.html"
         driver.get(file_url)
         
         # 2. Setup mock vocabulary database in localStorage (3 words)
@@ -156,6 +171,8 @@ def run_tests():
         sys.exit(1)
     finally:
         driver.quit()
+        httpd.shutdown()
+        httpd.server_close()
 
 if __name__ == "__main__":
     run_tests()
