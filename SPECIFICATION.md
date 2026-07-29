@@ -1,6 +1,6 @@
 # 🧠 極限單字特訓系統 Mobile App - 產品規格書 (Product Specification)
 
-*   **文件版本 (Document Version)**：1.7.9
+*   **文件版本 (Document Version)**：1.8.0
 *   **適用專案 (Target Project)**：`VocabTool-App` (Capacitor Android + React 18 Mobile Version) & `VocabTool` (Web Version)
 
 本規格書詳細紀錄「極限單字特訓系統 Mobile App」的系統架構、核心演算法、資料儲存結構、正規化備份規格、5 大防禦機制、特訓功能模組、UI 流程規範、開發者建置指令與 OTA 熱更新流程。
@@ -31,6 +31,7 @@
     *   `vocab_dbList`：字庫名稱列表（預設包含 `vocab_2000`, `vocab_7000`）。
     *   `vocab_speechRate`：朗讀語速（預設為 `0.8`）。
     *   `vocab_speechEnabled`：發音開關（預設為 `true`）。
+    *   `vocab_scanMode`：全域特訓模式（預設為 `'flashcard'`, 可切換為 `'mcq'`）。
     *   `vocab_audioSettings`：聽寫朗讀參數設定。
 *   **Filesystem 原生沙盒檔案 (原生沙盒 Directory.Data 下之實體 JSON 檔，或 Web LocalStorage)**：
     *   `vocab_data_{dbName}.json` (Web 為 `vocab_customVocab_{dbName}`)：存放字庫的單字陣列 (`Word[]`)。
@@ -59,7 +60,7 @@ interface HistoricalMistakeEntry {
   mistakesCount: number;                 // 當次特訓失誤次數
   totalFails: number;                    // 魔王等級 / 累計總失誤次數
   archivedDate: number;                  // 歸檔時間戳記 (Epoch MS)
-  step: number;                          // 間隔階段階段號 (0: 7天, 1: 21天, 2: 60天, 3: 180天)
+  step: number;                          // 間隔階段號 (0: 7天, 1: 21天, 2: 60天, 3: 180天)
   interval: number;                      // 當前冷卻天數 (7 / 21 / 60 / 180)
   immune: boolean;                       // 是否通過 180 天抽查達到永久免疫 (true/false)
 }
@@ -140,12 +141,6 @@ interface DBState {
 5. **防禦 5: Android WebView 布林型態安全 (Strict Boolean Type Safety)**
    * **原理**：針對偏好設定 (`speechEnabled`) 實施嚴格布林解析 `(val === true || val === 'true')`，防範 Android WebView 文字 `"false"` 被 JS 誤判為 Truthy 的原生坑洞。
 
-### 3.3 無鎖寬容解析 (Tolerant Reader Pattern)
-匯入解析器 (`parseUniversalBackup`) 遵循 Martin Fowler 的 Tolerant Reader 模式，自動識別 3 大格式：
-* **Format A (純單字 JSON 陣列)**：`[ { en, zh, pos, eg } ]` ➔ 轉譯為當前字庫單字集。
-* **Format B (v3.0 正規化備份 `normalized_system`)**：直接提取 `globalSettings` 與 `databases` 並重新連結實體。
-* **Format C (舊版 v2.0 `full_system` 或單一 `state` 備份)**：自動經由 Adapter 補充缺漏欄位預設值 (`{ ...defaultState, ...imported }`) 並轉換還原。
-
 ---
 
 ## 4. UI 介面與備份/還原流轉 (UI Flow & Backup Interactions)
@@ -173,21 +168,34 @@ flowchart TD
 
 ---
 
-## 5. 特訓流水線與核心演算法 (Training Pipeline & Algorithms)
+## 5. 特訓流水線與全域特訓模式 (Training Pipeline & Modes)
 
-### 5.1 第一階段：快速篩選 (Flashcard Filter)
-*   **操作**：系統逐一展示今日新單字與到期幽靈單字，並自動播放美式英語發音。
-*   **介面按鈕與鍵盤控制**：
-    *   🟢 **「認得」按鈕** 或 **`→` 鍵** ➔ 歸類為「認識」，繼續推進下一字。
-    *   🔴 **「不認得」按鈕** 或 **`←` 鍵** ➔ 歸類為「不熟」，**寫入當前錯題集中營**。
+### 5.1 全域特訓模式定義 (`scanMode`)
+位於主儀表板「📢 自動發音」下方，提供 `[ 🎴 閃卡模式 | 🔘 4選1模式 ]` 全域膠囊切換鈕：
 
-### 5.2 第二階段：強制盲測 (Forced Spelling Test)
+*   **`🎴 閃卡模式` (預設)**：
+    *   **⚡ 今日特訓**：第一關為閃卡瀏覽（認識／不熟）➔ 第二關為強制盲測全拼寫。
+    *   **🔥 錯題大會考**：直接進行純拼寫盲測（100% 原始拼字測驗）。
+    *   **🏛️ 歷史隨機抽查**：直接進行純拼寫盲測（100% 原始拼字抽驗）。
+*   **`🔘 4選1模式`**：
+    *   **⚡ 今日特訓**：保持第一關閃卡瀏覽（認識／不熟）➔ 第二關強制盲測全拼寫。
+    *   **🔥 錯題大會考**：轉為「四選一選擇題測驗」（答錯視同拼錯重寫，併入錯題集中營懲罰）。
+    *   **🏛️ 歷史隨機抽查**：轉為「四選一選擇題測驗」（答錯視同拼錯，退回錯題集中營）。
+
+### 5.2 4 選 1 選擇題模式細節 (MCQ Mode Specifications)
+*   **選項產生**：以當前題目單字的 `currentWord.zh` 為正確答案，並自 `vocabList`、`activeMistakesList` 與 `historicalMistakes` 混合池中抽取 3 個相異的中文釋義作為干擾選項，隨機打亂產生 A, B, C, D 四個按鈕。
+*   **例句遮蔽**：在 4 選 1 模式下，卡片內隱藏中文釋義 `{currentWord.zh}`，例句僅保留英文部分，自動將括號內的中文翻譯 `(中文翻譯...)` 進行正規表達式過濾隱藏。
+*   **答題反饋**：
+    *   🟢 **點選正確答案**：顯示綠光反饋與發音，0.5 秒後自動推進。
+    *   🔴 **點選錯誤答案**：選中選項顯示紅光、正確答案提示綠光，1.1 秒後標記為「不熟」，呼叫 `punishWord` 懲罰該單字。
+
+### 5.3 第二階段：強制盲測 (Forced Spelling Test)
 *   **規則**：篩選結束後打亂不熟單字，隱藏英文拼寫，僅顯示中文釋義、詞性與底線長度占位符（例如 `_ _ _ _ _`）。
 *   **懲罰邏輯**：
     1.  **手滑警告 (Slip Warning)**：本輪首次拼錯時發出震動提示，給予第二次輸入機會。
     2.  **失憶強迫重抄 (Strict Correction)**：第二次拼錯時鎖定輸入框，以亮綠色顯示正確拼寫，**強迫使用者對著正確答案完整抄寫一遍**，且該字答對次數歸零，錯題數 +1。
 
-### 5.3 雙倍消除演算法 (Double Elimination Algorithm)
+### 5.4 雙倍消除演算法 (Double Elimination Algorithm)
 單字必須在盲測中連續拼對指定次數方可畢業：
 $$\text{連續拼對目標次數} = \text{Min}(\text{該字錯誤次數} \times 2, 6)$$
 

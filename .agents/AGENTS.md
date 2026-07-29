@@ -21,11 +21,11 @@
 
 *   **環境變數設定 (PowerShell 範例)**：
     ```powershell
-    # 設定 Java 21 JDK 路徑 (使用 Android Studio 內建 JBR)
-    $env:JAVA_HOME="D:\Android\Android Studio\jbr"
+    # 設定 Java 21 JDK 路徑 (使用 Android Studio 內建 JBR 亦可)
+    $env:JAVA_HOME = if (Test-Path "D:\Android\Android Studio\jbr") { "D:\Android\Android Studio\jbr" } else { "$env:ProgramFiles\Android\Android Studio\jbr" }
     
-    # 將 ADB 加入 PATH (若尚未設定)
-    $env:Path += ";C:\Users\hys82\AppData\Local\Android\Sdk\platform-tools"
+    # 將 Android SDK Platform-Tools (ADB) 加入 PATH
+    if ($env:ANDROID_HOME) { $env:Path += ";$env:ANDROID_HOME\platform-tools" } else { $env:Path += ";$env:LOCALAPPDATA\Android\Sdk\platform-tools" }
     ```
 
 *   **開發指令**：
@@ -36,13 +36,13 @@
     # 2. 同步 web 資源至 Android 原生工程
     cmd /c npx cap sync android
     
-    # 3. 編譯 Debug APK
+    # 3. 編譯 Debug APK (-q 限流日誌)
     cd android
-    .\gradlew.bat assembleDebug
+    .\gradlew.bat assembleDebug -q
     
     # 4. 安裝並重啟 App 至連線裝置
-    & "C:\Users\hys82\AppData\Local\Android\Sdk\platform-tools\adb.exe" install -r .\app\build\outputs\apk\debug\app-debug.apk
-    & "C:\Users\hys82\AppData\Local\Android\Sdk\platform-tools\adb.exe" shell am start -n com.vocabtool.app/com.vocabtool.app.MainActivity
+    adb install -r .\app\build\outputs\apk\debug\app-debug.apk
+    adb shell am start -n com.vocabtool.app/com.vocabtool.app.MainActivity
     ```
 
 ---
@@ -54,8 +54,14 @@
 3. **🏷️ 語意化版本控制與發布進版時機 (SemVer & Release Workflow)**：
    * **本地開發測試期**：進行功能開發、重構或 Bug 修復時，**版本號保持不動**，專注於程式碼修改與測試，切勿在本地微調時隨意遞增版號。
    * **正式發布 / Git Push 階段**：當功能測試完成、使用者明確指示準備 Git Push 或發布正式版時，方可一次性統一遞增版本號。
-   * **進版同步檔案**：主變更 (MAJOR)、功能增刪 (MINOR)、Bug 修復 (PATCH) 與 Android `versionCode` (單調遞增) 必須同步修改於 `app.js`、`build.gradle` 與 `package.json`，並與 Git Tag 保持 100% 一致。規格文件如 `SPECIFICATION.md` 僅在規格內文有實質修改時方可進版。
+   * **進版同步檔案**：主變更 (MAJOR)、功能增刪 (MINOR)、Bug 修復 (PATCH) 與 Android `versionCode` (單調遞增) 必須同步修改於 `app.js`、`build.gradle` 與 `package.json`，並與 Git Tag 保持 100% 一致。說明書 (`README.md`) 與規格書 (`SPECIFICATION.md`) 有修改後，當需要更新到雲端時，內標註的文件版本號必須始終與 App 版本號完全一致（如 App 版本為 1.7.9，則文件版本亦標註為 1.7.9）。
 4. **💡 先說明原因再進行動作**：收到使用者回報的問題、警告或異常時，務必先向使用者清楚說明發生的根本原因 (Root Cause) 與預計的修復對策，確認思路後再執行相應的檔案修改與指令操作。
+5. **📖 說明書與規格書職責分流原則**：
+   * `README.md` 僅作為純粹的使用者操作手冊（專注於功能介紹、按鈕選單、鍵盤操作與 TTS 發音障礙排除）。
+   * `SPECIFICATION.md` 為權威技術規格書（收錄系統架構、Schema、正規化備份規格、防禦機制、演算法、建置與 OTA 流水線）。
+6. **🌐 數據正規化與指標完整性鐵律**：
+   * 進行備份與狀態瘦身時，僅剝離重複嵌入的 `data` 物件，必須 100% 完整保留 `archivedDate`, `step`, `interval`, `immune`, `totalFails`, `mistakesCount`, `correctCount` 等所有特訓冷卻規格指標。
+   * 還原解析時若錯題單字已自字典中被刪除，採方案 A 自動過濾清理孤兒錯題，保證關卡與歷史殿堂出題乾淨。
 
 ---
 
@@ -71,7 +77,7 @@
 
 *   **WebView 檔案下載限制 (File Export in WebView)**：Android/iOS WebView 預設會阻擋 Blob URL 下載。字庫、歷史紀錄與備份 JSON 的匯出功能必須整合 `@capacitor/filesystem` (寫入 `CACHE` 目錄) 與 `@capacitor/share` (喚起原生分享選單)。
 *   **分享取消處理 (Graceful Share Cancellation)**：原生分享外掛在使用者主動取消分享時會拋出例外（例如 `Share canceled`）。寫入成功後若因分享取消而進入 `catch`，不應觸發剪貼簿備份或彈出「請確認 App 權限」之誤導性警告。
-*   **Kotlin 與依賴版本管理 (Kotlin Dependencies)**：**禁止**在 `android/build.gradle` 中強制鎖定（force）舊版 Kotlin 標準庫（如 `kotlin-stdlib:1.8.22`），避免與 `@capacitor/filesystem` 等現代原生外掛所需的協程庫發生 `NoClassDefFoundError: Failed resolution of: Lkotlin/coroutines/jvm/internal/SpillingKt;` 衝突。應交由 Gradle 自行解析最高相容版本。
+*   **Kotlin 依賴衝突解決 (Kotlin Dependencies)**：當遇到舊外掛（如 Cordova）引入 `kotlin-stdlib-jdk7/8` 導致 Gradle `CheckDuplicates` 報出重複 Class 衝突時，應在 `android/build.gradle` 的 `allprojects` 區塊加入 `configurations.all { exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'; exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8' }` 予以全域排除，由更高版的 `kotlin-stdlib` (1.8.22+) 統一處理。
 
 ---
 
