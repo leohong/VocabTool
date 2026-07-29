@@ -1242,20 +1242,44 @@ window.Dashboard = ({
   return (
     <div className="w-full flex flex-col gap-5 animate-[fadeIn_0.4s_ease-in-out]">
 
-      <button
-        onClick={startTodaySession}
-        className="w-full min-h-[160px] bg-gradient-to-br from-indigo-600 to-indigo-800 hover:from-indigo-500 hover:to-indigo-700 text-white rounded-2xl shadow-xl shadow-indigo-900/30 flex flex-col items-center justify-center gap-3 transition-transform active:scale-[0.98] border border-indigo-500/30 group"
-      >
-        <div className="group-hover:scale-110 transition-transform duration-300">
-          <IconPlay />
-        </div>
-        <div className="text-center">
-          <h2 className="text-2xl font-black tracking-wide">發動今日特訓</h2>
-          <p className="text-sm text-indigo-200 mt-1.5 font-medium bg-indigo-950/40 px-3 py-1 rounded-full inline-block border border-indigo-500/20">
-            包含冷卻幽靈突襲 👻
+      {vocabList && vocabList.length === 0 ? (
+        <div className="w-full bg-slate-800 border-2 border-dashed border-indigo-500/50 p-6 rounded-2xl text-center space-y-3 shadow-xl">
+          <div className="text-3xl">🗂️</div>
+          <h2 className="text-lg font-bold text-white">目前字庫【{dbName}】尚無單字</h2>
+          <p className="text-xs text-slate-400 max-w-sm mx-auto">
+            您可以手動新增自訂單字，或使用下方的「⬆️ 字」匯入 JSON/TXT 單字檔。
           </p>
+          <div className="flex justify-center gap-2 pt-2">
+            <button
+              onClick={() => { setShowDictModal(true); resetDictState(); }}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-md transition-colors flex items-center gap-1"
+            >
+              📖 管理/新增自訂單字
+            </button>
+            <button
+              onClick={() => setShowImportOptionsModal(true)}
+              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
+            >
+              ⬆️ 匯入單字檔 (JSON/TXT)
+            </button>
+          </div>
         </div>
-      </button>
+      ) : (
+        <button
+          onClick={startTodaySession}
+          className="w-full min-h-[160px] bg-gradient-to-br from-indigo-600 to-indigo-800 hover:from-indigo-500 hover:to-indigo-700 text-white rounded-2xl shadow-xl shadow-indigo-900/30 flex flex-col items-center justify-center gap-3 transition-transform active:scale-[0.98] border border-indigo-500/30 group"
+        >
+          <div className="group-hover:scale-110 transition-transform duration-300">
+            <IconPlay />
+          </div>
+          <div className="text-center">
+            <h2 className="text-2xl font-black tracking-wide">發動今日特訓</h2>
+            <p className="text-sm text-indigo-200 mt-1.5 font-medium bg-indigo-950/40 px-3 py-1 rounded-full inline-block border border-indigo-500/20">
+              包含冷卻幽靈突襲 👻
+            </p>
+          </div>
+        </button>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <button
@@ -5231,15 +5255,26 @@ function App() {
     e.target.value = "";
   };
 
-  const handleAddDB = () => {
-    const newName = window.prompt("請輸入全新資料庫代碼 (僅限英文與數字):");
+  const handleAddDB = async () => {
+    const newName = window.prompt("請輸入全新自訂資料庫名稱/代碼 (僅限英文與數字):");
     if (newName && newName.trim()) {
       const cleaned = newName.replace(/[^a-zA-Z0-9_]/g, '');
-      if (cleaned && !dbList.includes(cleaned)) {
-        const updated = [...dbList, cleaned];
-        setDbList(updated);
+      if (cleaned) {
+        let updated = [...dbList];
+        if (!updated.includes(cleaned)) {
+          updated.push(cleaned);
+          setDbList(updated);
+          await window.persistentStorage.saveDbList(updated);
+        }
+        await window.persistentStorage.saveDatabase(cleaned, []);
+        await window.persistentStorage.saveDbState(cleaned, defaultState);
+        await window.persistentStorage.setSetting('vocab_currentDB', cleaned);
+
+        setDbName(cleaned);
+        setVocabList([]);
+        setState(defaultState);
+        alert(`已成功建立並切換至全新自訂資料庫【${cleaned}】！\n您可以在字典管理中點擊「+ 新增單字」手動輸入，或點擊「⬆️ 匯入」載入單字。`);
       }
-      if (cleaned) setDbName(cleaned);
     }
   };
 
@@ -5255,14 +5290,32 @@ function App() {
       await window.persistentStorage.setSetting(`vocab_tempSession_${dbName}`, null);
 
       const updatedList = dbList.filter(name => name !== dbName);
-      const finalDbList = updatedList.length > 0 ? updatedList : ['vocab_2000'];
-      setDbList(finalDbList);
-      await window.persistentStorage.saveDbList(finalDbList);
+      let nextDb;
+      let isNewCustom = false;
 
-      const nextDb = finalDbList[0];
+      if (updatedList.length > 0) {
+        nextDb = updatedList[0];
+      } else {
+        const defaultCustomDb = 'custom_vocab';
+        updatedList.push(defaultCustomDb);
+        nextDb = defaultCustomDb;
+        isNewCustom = true;
+        await window.persistentStorage.saveDatabase(defaultCustomDb, []);
+        await window.persistentStorage.saveDbState(defaultCustomDb, defaultState);
+      }
+
+      setDbList(updatedList);
+      await window.persistentStorage.saveDbList(updatedList);
       await window.persistentStorage.setSetting('vocab_currentDB', nextDb);
 
-      alert(`已刪除字庫【${dbName}】。`);
+      if (isNewCustom) {
+        setDbName(nextDb);
+        setVocabList([]);
+        setState(defaultState);
+        alert(`已徹底刪除字庫【${dbName}】。\n目前所有字庫已清空，系統已自動為您建立並切換至全新空白自訂資料庫【${nextDb}】！`);
+      } else {
+        alert(`已徹底刪除字庫【${dbName}】。已自動切換至資料庫：${nextDb}`);
+      }
       window.location.reload();
     }
   };
