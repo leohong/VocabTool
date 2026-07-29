@@ -4802,7 +4802,7 @@ function App() {
   };
 
   const handleExitSession = async () => {
-    if (window.confirm("確定要暫停離開嗎？系統已為您存檔。")) {
+    if (window.confirm("確定要暫停離開嗎？")) {
       const key = getTempSessionKey(dbName, sessionType, view);
       const sessionData = {
         date: new Date().toDateString(),
