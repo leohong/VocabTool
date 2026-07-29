@@ -1,6 +1,6 @@
 # 🧠 極限單字特訓系統 Mobile App - 產品規格書 (Product Specification)
 
-*   **文件版本 (Document Version)**：1.8.0
+*   **文件版本 (Document Version)**：1.8.1
 *   **適用專案 (Target Project)**：`VocabTool-App` (Capacitor Android + React 18 Mobile Version) & `VocabTool` (Web Version)
 
 本規格書詳細紀錄「極限單字特訓系統 Mobile App」的系統架構、核心演算法、資料儲存結構、正規化備份規格、5 大防禦機制、特訓功能模組、UI 流程規範、開發者建置指令與 OTA 熱更新流程。
