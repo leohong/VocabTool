@@ -3,7 +3,7 @@
 *   **文件版本 (Document Version)**：1.7.8
 *   **適用專案 (Target Project)**：`VocabTool-App` (Capacitor Android + React 18 Mobile Version) & `VocabTool` (Web Version)
 
-本規格書詳細紀錄「極限單字特訓系統 Mobile App」的系統架構、核心演算法、資料儲存結構、正規化備份規格、5 大防禦機制、特訓功能模組與 UI 互動流程。
+本規格書詳細紀錄「極限單字特訓系統 Mobile App」的系統架構、核心演算法、資料儲存結構、正規化備份規格、5 大防禦機制、特訓功能模組、UI 流程規範、開發者建置指令與 OTA 熱更新流程。
 
 ---
 
@@ -258,3 +258,26 @@ $$\text{連續拼對目標次數} = \text{Min}(\text{該字錯誤次數} \times 
 *   **開機安全確認 (`notifyAppReady`)**：App 啟動時向原生端發送就緒宣告，以防損壞更新包造成閃退，自動回滾到前一個穩定版本。
 *   **異步更新比對 (`checkForUpdates`)**：啟動 3 秒後於背景 fetch 遠端的 `update.json` 版本定義檔，當 `遠端版本 > 本地版本` 時，彈出更新確認對話框，確認後背景下載 ZIP 解壓並自動重啟載入新版。
 *   **斷網容錯防護**：網路中斷或連線失敗時，更新機制會默默失敗放行，100% 確保 App 在離線狀態下正常運作。
+
+---
+
+## 11. 開發者編譯與熱更新打包工作流 (Developer Build & Release Pipeline)
+
+1. **模組預編譯打包 (Babel Bundler)**：
+   ```powershell
+   cmd /c npm run build
+   ```
+2. **Capacitor 資產同步至 Android 工程**：
+   ```powershell
+   cmd /c npx cap sync android
+   ```
+3. **Gradle 靜音編譯 Debug APK**：
+   ```powershell
+   cd android
+   .\gradlew.bat assembleDebug -q
+   ```
+4. **OTA 熱更新 ZIP 打包與發布 (`scripts/zip_www.js`)**：
+   ```powershell
+   node scripts/zip_www.js
+   ```
+   產出 `dist/www.zip`，上傳至 GitHub Release 並更新 `update.json`。
