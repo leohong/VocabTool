@@ -503,12 +503,35 @@ window.exportHistoryTXT = (historicalMistakes, vocabList, dbName) => {
 // --- 🌐 正規化極致輕量與無鎖相容備份系統 ---
 // ==========================================
 window.exportImportUtils = {
-  // 完整系統備份打包 (保留歷史殿堂與當日錯題中完整的單字 data 實體與完整 vocabList 陣列)
+  // 正規化極致輕量備份打包 (v3.0：剝離 mistakes/historicalMistakes 中重複的 data 實體，保留所有 SRS 冷卻與失誤指標)
   buildNormalizedBackup: (allDatabasesData, globalSettings) => {
     const normalizedDbs = {};
 
     for (const [db, dbObj] of Object.entries(allDatabasesData || {})) {
       const origState = dbObj.state ? JSON.parse(JSON.stringify(dbObj.state)) : null;
+      if (origState) {
+        // 1. 瘦身歷史殿堂 (historicalMistakes)
+        if (origState.historicalMistakes) {
+          const normalizedHistorical = {};
+          for (const [enKey, mistakeObj] of Object.entries(origState.historicalMistakes)) {
+            if (!mistakeObj) continue;
+            const { data, ...rest } = mistakeObj;
+            normalizedHistorical[enKey] = rest;
+          }
+          origState.historicalMistakes = normalizedHistorical;
+        }
+
+        // 2. 瘦身當日特訓錯題庫 (mistakes)
+        if (origState.mistakes && typeof origState.mistakes === 'object' && !Array.isArray(origState.mistakes)) {
+          const normalizedMistakes = {};
+          for (const [enKey, mistakeObj] of Object.entries(origState.mistakes)) {
+            if (!mistakeObj) continue;
+            const { data, ...rest } = mistakeObj;
+            normalizedMistakes[enKey] = rest;
+          }
+          origState.mistakes = normalizedMistakes;
+        }
+      }
 
       normalizedDbs[db] = {
         settings: {
@@ -522,7 +545,7 @@ window.exportImportUtils = {
 
     return {
       version: "3.0",
-      backupType: "full_system",
+      backupType: "normalized_system",
       exportDate: new Date().toISOString(),
       globalSettings: {
         currentDB: globalSettings.currentDB || 'vocab_2000',
