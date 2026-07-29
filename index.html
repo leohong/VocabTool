@@ -576,20 +576,26 @@ window.exportImportUtils = {
       });
 
       const rehydrated = {};
-      for (const [enKey, entry] of Object.entries(mistakesObj)) {
+      const entries = Array.isArray(mistakesObj)
+        ? mistakesObj.map(item => [item.en || item.word || '', item])
+        : Object.entries(mistakesObj);
+
+      for (const [enKey, entry] of entries) {
         if (!entry) continue;
-        let wordData = entry.data;
-        const targetKey = (wordData && wordData.en) ? wordData.en : enKey;
-        const found = vocabMap.get(targetKey) || (wordData && wordData.en ? wordData : null);
+        let wordData = entry.data || ((entry.en || entry.word) ? entry : null);
+        const targetKey = (wordData && (wordData.en || wordData.word)) ? (wordData.en || wordData.word) : enKey;
+        if (!targetKey) continue;
+
+        const found = vocabMap.get(targetKey) || (wordData && (wordData.en || wordData.word) ? wordData : null);
 
         if (found) {
           rehydrated[targetKey] = {
             ...entry,
             data: {
-              en: found.en,
-              zh: found.zh || '[無譯義]',
-              pos: found.pos || 'n.',
-              eg: found.eg || ''
+              en: found.en || found.word || targetKey,
+              zh: found.zh || found.meaning || '[無譯義]',
+              pos: found.pos || found.partOfSpeech || 'n.',
+              eg: found.eg || found.example || ''
             }
           };
         }
@@ -597,7 +603,96 @@ window.exportImportUtils = {
       return rehydrated;
     };
 
-    // 格式 A: 純單字 JSON 陣列或包裝於物件的單字清單 [{en, zh...}]
+    const isSystemOrDbBackup = data && (data.backupType || data.databases || data.allDatabases || data.globalSettings || data.global || data.state);
+
+    // 1. 全系統備份或單一字庫狀態備份 (優先解析系統備份，防止帶有 vocabList 陣列的系統備份被誤判為純單字清單)
+    if (isSystemOrDbBackup) {
+      if (data.backupType === 'normalized_system' || data.backupType === 'full_system' || data.databases || data.allDatabases || data.globalSettings || data.global) {
+        const gs = data.globalSettings || data.global || {};
+        const importedDbList = Array.isArray(gs.dbList) && gs.dbList.length > 0 ? gs.dbList : ['vocab_2000', 'vocab_7000'];
+        const importedCurrentDB = gs.currentDB || data.dbName || importedDbList[0] || 'vocab_2000';
+        const importedSpeechRate = typeof gs.speechRate === 'number' ? gs.speechRate : 0.8;
+        const importedSpeechEnabled = parseStrictBoolean(gs.speechEnabled, true);
+
+        const parsedDatabases = {};
+        const dbsObj = data.databases || data.allDatabases || (data.state ? { [importedCurrentDB]: { state: data.state, vocabList: data.vocabList, wordsPerDay: data.wordsPerDay, ghostsPerDay: data.ghostsPerDay } } : {});
+
+        for (const dbName of Object.keys(dbsObj)) {
+          const rawDb = dbsObj[dbName] || {};
+          let vocabList = Array.isArray(rawDb.vocabList) && rawDb.vocabList.length > 0 ? rawDb.vocabList : null;
+          
+          // 防禦 3: 空字庫降級 (自動自 rawVocabMap 載入)
+          if (!vocabList || vocabList.length === 0) {
+            if (rawVocabMap && rawVocabMap[dbName]) vocabList = rawVocabMap[dbName];
+          }
+
+          const rawState = rawDb.state || rawDb.userState || rawDb || {};
+          const rawHistorical = rawState.historicalMistakes || rawState.history || rawState.historical || {};
+          const rawActiveMistakes = rawState.mistakes || rawState.activeMistakes || rawState.mistakeList || {};
+
+          const rehydratedHistorical = rehydrateMistakes(rawHistorical, vocabList);
+          const rehydratedActiveMistakes = rehydrateMistakes(rawActiveMistakes, vocabList);
+
+          const rawWordsPerDay = rawDb.settings?.wordsPerDay ?? rawDb.wordsPerDay;
+          const rawGhostsPerDay = rawDb.settings?.ghostsPerDay ?? rawDb.ghostsPerDay;
+
+          parsedDatabases[dbName] = {
+            vocabList,
+            state: {
+              currentDay: parseInt(rawState.currentDay, 10) || 1,
+              learnedWords: Array.isArray(rawState.learnedWords) ? rawState.learnedWords : (Array.isArray(rawState.learned) ? rawState.learned : []),
+              mistakes: rehydratedActiveMistakes,
+              historicalMistakes: rehydratedHistorical,
+              streak: rawState.streak || { count: 0, lastDate: null }
+            },
+            wordsPerDay: parseInt(rawWordsPerDay, 10) || 50,
+            ghostsPerDay: parseInt(rawGhostsPerDay, 10) || 10
+          };
+        }
+
+        return {
+          type: 'full_system',
+          globalSettings: {
+            dbList: importedDbList,
+            currentDB: importedCurrentDB,
+            speechRate: importedSpeechRate,
+            speechEnabled: importedSpeechEnabled
+          },
+          databases: parsedDatabases
+        };
+      }
+
+      if (data.state || data.customVocab) {
+        const targetDb = data.dbName || 'vocab_2000';
+        let vocabList = Array.isArray(data.vocabList) && data.vocabList.length > 0 ? data.vocabList : (Array.isArray(data.customVocab) ? data.customVocab : null);
+        if (!vocabList || vocabList.length === 0) {
+          if (rawVocabMap && rawVocabMap[targetDb]) vocabList = rawVocabMap[targetDb];
+        }
+        const rawState = data.state || {};
+        const rawHistorical = rawState.historicalMistakes || rawState.history || rawState.historical || {};
+        const rawActiveMistakes = rawState.mistakes || rawState.activeMistakes || rawState.mistakeList || {};
+
+        const rehydratedHistorical = rehydrateMistakes(rawHistorical, vocabList);
+        const rehydratedActiveMistakes = rehydrateMistakes(rawActiveMistakes, vocabList);
+
+        return {
+          type: 'single_db',
+          dbName: targetDb,
+          vocabList,
+          state: {
+            currentDay: parseInt(rawState.currentDay, 10) || 1,
+            learnedWords: Array.isArray(rawState.learnedWords) ? rawState.learnedWords : (Array.isArray(rawState.learned) ? rawState.learned : []),
+            mistakes: rehydratedActiveMistakes,
+            historicalMistakes: rehydratedHistorical,
+            streak: rawState.streak || { count: 0, lastDate: null }
+          },
+          wordsPerDay: parseInt(data.wordsPerDay, 10) || 50,
+          ghostsPerDay: parseInt(data.ghostsPerDay, 10) || 10
+        };
+      }
+    }
+
+    // 2. 純單字 JSON 陣列或包裝於物件的單字清單 [{en, zh...}]
     const rawListCandidate = Array.isArray(data) ? data : (data && (Array.isArray(data.vocabList) ? data.vocabList : (Array.isArray(data.words) ? data.words : (Array.isArray(data.data) ? data.data : (Array.isArray(data.items) ? data.items : null)))));
     if (rawListCandidate) {
       const importedWords = rawListCandidate.map(item => ({
@@ -613,131 +708,6 @@ window.exportImportUtils = {
           vocabList: importedWords
         };
       }
-    }
-
-    // 格式 B: 新版 v3.0 正規化備份 (normalized_system)
-    if (data && (data.backupType === 'normalized_system' || data.databases || data.globalSettings)) {
-      const gs = data.globalSettings || data.global || {};
-      const importedDbList = Array.isArray(gs.dbList) && gs.dbList.length > 0 ? gs.dbList : ['vocab_2000', 'vocab_7000'];
-      const importedCurrentDB = gs.currentDB || importedDbList[0] || 'vocab_2000';
-      const importedSpeechRate = typeof gs.speechRate === 'number' ? gs.speechRate : 0.8;
-      const importedSpeechEnabled = parseStrictBoolean(gs.speechEnabled, true);
-
-      const parsedDatabases = {};
-      const dbsObj = data.databases || data.allDatabases || {};
-
-      for (const dbName of Object.keys(dbsObj)) {
-        const rawDb = dbsObj[dbName] || {};
-        let vocabList = Array.isArray(rawDb.vocabList) && rawDb.vocabList.length > 0 ? rawDb.vocabList : null;
-        
-        // 防禦 3: 空字庫降級 (自動自 rawVocabMap 載入)
-        if (!vocabList || vocabList.length === 0) {
-          if (rawVocabMap && rawVocabMap[dbName]) vocabList = rawVocabMap[dbName];
-        }
-
-        const rawState = rawDb.state || {};
-        const rehydratedHistorical = rehydrateMistakes(rawState.historicalMistakes, vocabList);
-        const rehydratedActiveMistakes = rehydrateMistakes(rawState.mistakes, vocabList);
-
-        const rawWordsPerDay = rawDb.settings?.wordsPerDay ?? rawDb.wordsPerDay;
-        const rawGhostsPerDay = rawDb.settings?.ghostsPerDay ?? rawDb.ghostsPerDay;
-
-        parsedDatabases[dbName] = {
-          vocabList,
-          state: {
-            currentDay: parseInt(rawState.currentDay, 10) || 1,
-            learnedWords: Array.isArray(rawState.learnedWords) ? rawState.learnedWords : [],
-            mistakes: rehydratedActiveMistakes,
-            historicalMistakes: rehydratedHistorical,
-            streak: rawState.streak || { count: 0, lastDate: null }
-          },
-          wordsPerDay: parseInt(rawWordsPerDay, 10) || 50,
-          ghostsPerDay: parseInt(rawGhostsPerDay, 10) || 10
-        };
-      }
-
-      return {
-        type: 'full_system',
-        globalSettings: {
-          dbList: importedDbList,
-          currentDB: importedCurrentDB,
-          speechRate: importedSpeechRate,
-          speechEnabled: importedSpeechEnabled
-        },
-        databases: parsedDatabases
-      };
-    }
-
-    // 格式 C: 舊版 v2.0 full_system 備份相容
-    if (data && data.backupType === 'full_system' && data.allDatabases) {
-      const gs = data.global || {};
-      const importedDbList = gs.dbList || ['vocab_2000', 'vocab_7000'];
-      const importedCurrentDB = gs.currentDB || 'vocab_2000';
-      const importedSpeechRate = gs.speechRate || 0.8;
-      const importedSpeechEnabled = parseStrictBoolean(gs.speechEnabled, true);
-
-      const parsedDatabases = {};
-      for (const dbName of Object.keys(data.allDatabases)) {
-        const rawDb = data.allDatabases[dbName] || {};
-        let vocabList = Array.isArray(rawDb.vocabList) && rawDb.vocabList.length > 0 ? rawDb.vocabList : null;
-        if (!vocabList || vocabList.length === 0) {
-          if (rawVocabMap && rawVocabMap[dbName]) vocabList = rawVocabMap[dbName];
-        }
-        const rawState = rawDb.state || {};
-        const rehydratedHistorical = rehydrateMistakes(rawState.historicalMistakes, vocabList);
-        const rehydratedActiveMistakes = rehydrateMistakes(rawState.mistakes, vocabList);
-
-        parsedDatabases[dbName] = {
-          vocabList,
-          state: {
-            currentDay: parseInt(rawState.currentDay, 10) || 1,
-            learnedWords: Array.isArray(rawState.learnedWords) ? rawState.learnedWords : [],
-            mistakes: rehydratedActiveMistakes,
-            historicalMistakes: rehydratedHistorical,
-            streak: rawState.streak || { count: 0, lastDate: null }
-          },
-          wordsPerDay: parseInt(rawDb.wordsPerDay, 10) || 50,
-          ghostsPerDay: parseInt(rawDb.ghostsPerDay, 10) || 10
-        };
-      }
-
-      return {
-        type: 'full_system',
-        globalSettings: {
-          dbList: importedDbList,
-          currentDB: importedCurrentDB,
-          speechRate: importedSpeechRate,
-          speechEnabled: importedSpeechEnabled
-        },
-        databases: parsedDatabases
-      };
-    }
-
-    // 格式 D: 單一字庫備份 (data.state)
-    if (data && (data.state || data.customVocab)) {
-      const targetDb = data.dbName || 'vocab_2000';
-      let vocabList = Array.isArray(data.vocabList) && data.vocabList.length > 0 ? data.vocabList : (Array.isArray(data.customVocab) ? data.customVocab : null);
-      if (!vocabList || vocabList.length === 0) {
-        if (rawVocabMap && rawVocabMap[targetDb]) vocabList = rawVocabMap[targetDb];
-      }
-      const rawState = data.state || {};
-      const rehydratedHistorical = rehydrateMistakes(rawState.historicalMistakes, vocabList);
-      const rehydratedActiveMistakes = rehydrateMistakes(rawState.mistakes, vocabList);
-
-      return {
-        type: 'single_db',
-        dbName: targetDb,
-        vocabList,
-        state: {
-          currentDay: parseInt(rawState.currentDay, 10) || 1,
-          learnedWords: Array.isArray(rawState.learnedWords) ? rawState.learnedWords : [],
-          mistakes: rehydratedActiveMistakes,
-          historicalMistakes: rehydratedHistorical,
-          streak: rawState.streak || { count: 0, lastDate: null }
-        },
-        wordsPerDay: parseInt(data.wordsPerDay, 10) || 50,
-        ghostsPerDay: parseInt(data.ghostsPerDay, 10) || 10
-      };
     }
 
     throw new Error("JSON 格式不符，請確認是正確的備份檔案。");
