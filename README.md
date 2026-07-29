@@ -2,6 +2,7 @@
 
 > 一款基於「主動回想」、「動態錯題懲罰」、「間隔重複」與 Capacitor 跨平台技術的極限單字記憶 App。
 
+🌐 **線上直接使用網頁版**：[https://leohong.github.io/VocabTool/](https://leohong.github.io/VocabTool/)  
 📦 **最新 Android APK 下載**：[GitHub Releases 最新發佈頁面](https://github.com/leohong/VocabTool-App/releases/latest)  
 🔗 **GitHub 儲存庫網址**：[https://github.com/leohong/VocabTool-App](https://github.com/leohong/VocabTool-App)  
 📚 **內建字庫檔案**：[國中 2000 單字庫](./www/2000_單字庫.txt) | [高中 7000 單字庫](./www/7000_單字庫.txt)  
