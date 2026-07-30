@@ -2527,7 +2527,7 @@ window.AudioSetupModal = ({
               <div className="flex justify-between items-center">
                 <span className="text-slate-300">單字朗讀次數：</span>
                 <select
-                  value={audioSettings.repeats || 2}
+                  value={audioSettings.repeats || 1}
                   onChange={(e) => updateSetting('repeats', parseInt(e.target.value, 10))}
                   className="bg-slate-950 border border-slate-700 text-indigo-300 rounded-lg px-2 py-1 focus:outline-none font-mono"
                 >
@@ -2536,37 +2536,17 @@ window.AudioSetupModal = ({
               </div>
 
               <div className="flex justify-between items-center">
-                <span className="text-slate-300">字間停頓時間：</span>
+                <span className="text-slate-300">字母拼讀速度：</span>
                 <select
-                  value={audioSettings.wordPause || 1.5}
-                  onChange={(e) => updateSetting('wordPause', parseFloat(e.target.value))}
+                  value={audioSettings.spellingRateMultiplier ?? 1.8}
+                  onChange={(e) => updateSetting('spellingRateMultiplier', parseFloat(e.target.value))}
                   className="bg-slate-950 border border-slate-700 text-indigo-300 rounded-lg px-2 py-1 focus:outline-none font-mono"
                 >
-                  {[0, 0.5, 1, 1.5, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n} 秒</option>)}
+                  <option value={1.0}>1.0 倍</option>
+                  <option value={1.5}>1.5 倍</option>
+                  <option value={1.8}>1.8 倍 (預設)</option>
+                  <option value={2.0}>2.0 倍</option>
                 </select>
-              </div>
-
-              <div className="flex justify-between items-center">
-                <span className="text-slate-300">字母拼讀停頓：</span>
-                <select
-                  value={audioSettings.spellingPause || 0}
-                  onChange={(e) => updateSetting('spellingPause', parseFloat(e.target.value))}
-                  className="bg-slate-950 border border-slate-700 text-indigo-300 rounded-lg px-2 py-1 focus:outline-none font-mono"
-                >
-                  {[0, 0.1, 0.2, 0.3, 0.5, 0.8, 1].map(n => <option key={n} value={n}>{n} 秒</option>)}
-                </select>
-              </div>
-
-              <div className="flex justify-between items-center">
-                <span className="text-slate-300">播放音量 (0~100)：</span>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={audioSettings.volume ?? 80}
-                  onChange={(e) => updateSetting('volume', parseInt(e.target.value, 10))}
-                  className="w-24 accent-indigo-500 bg-slate-950"
-                />
               </div>
 
               <div className="flex items-center justify-between col-span-1 sm:col-span-2 border-t border-slate-800/80 pt-2.5">
@@ -2583,43 +2563,6 @@ window.AudioSetupModal = ({
               </div>
             </div>
           </div>
-
-          {/* 4. 語音引擎配對 (Web Speech Only) */}
-          {voices.length > 0 && (
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
-                4. 瀏覽器發音引擎 (TTS Engine)：
-              </label>
-              <div className="space-y-2.5 bg-slate-900/50 p-4 rounded-2xl border border-slate-700/50">
-                <div className="space-y-1">
-                  <label className="text-slate-400 text-[10px] block">英文朗讀 (English Voice)：</label>
-                  <select
-                    value={audioSettings.enVoiceName || ''}
-                    onChange={(e) => updateSetting('enVoiceName', e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 text-indigo-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none"
-                  >
-                    <option value="">預設系統英文語音</option>
-                    {voices.filter(v => v.lang.startsWith('en')).map(v => (
-                      <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-slate-400 text-[10px] block">中文釋義 (Chinese Voice)：</label>
-                  <select
-                    value={audioSettings.zhVoiceName || ''}
-                    onChange={(e) => updateSetting('zhVoiceName', e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 text-indigo-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none"
-                  >
-                    <option value="">預設系統中文語音</option>
-                    {voices.filter(v => v.lang.startsWith('zh') || v.lang.startsWith('cmn')).map(v => (
-                      <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Footer Buttons */}
@@ -3791,15 +3734,16 @@ function App() {
   const [currentAudioIndex, setCurrentAudioIndex] = useState(0);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [audioSettings, setAudioSettings] = useState({
-    repeats: 2,
-    wordPause: 1.5,
+    repeats: 1,
+    wordPause: 0,
     hideSpelling: false,
     readExample: false,
-    volume: 80,
+    volume: 100,
     spellingPause: 0,
     spellingStartDelay: 0.15,
     enVoiceName: '',
-    zhVoiceName: ''
+    zhVoiceName: '',
+    spellingRateMultiplier: 1.8
   });
   const [voices, setVoices] = useState([]);
   const [audioStatusText, setAudioStatusText] = useState('準備中');
@@ -3900,17 +3844,26 @@ function App() {
 
       const savedAudio = await window.persistentStorage.getSetting('vocab_audioSettings', null);
       const defaultSettings = {
-        repeats: 2,
-        wordPause: 1.5,
+        repeats: 1,
+        wordPause: 0,
         hideSpelling: false,
         readExample: false,
-        volume: 80,
+        volume: 100,
         spellingPause: 0,
         enVoiceName: '',
-        zhVoiceName: ''
+        zhVoiceName: '',
+        spellingRateMultiplier: 1.8
       };
       if (savedAudio) {
-        setAudioSettings({ ...defaultSettings, ...savedAudio });
+        setAudioSettings({
+          ...defaultSettings,
+          ...savedAudio,
+          wordPause: 0,
+          spellingPause: 0,
+          volume: 100,
+          enVoiceName: '',
+          zhVoiceName: ''
+        });
       } else {
         setAudioSettings(defaultSettings);
       }
@@ -4307,7 +4260,8 @@ function App() {
         setAudioStatusText(`拼讀字母...`);
         const chars = word.en.toLowerCase().replace(/[^a-z']/g, '').split('');
         const spellingStr = chars.join(', ');
-        await speakAsync(spellingStr, 'en-US', settings.enVoiceName, signal);
+        const spellingRate = speechRate * (settings.spellingRateMultiplier || 1.8);
+        await speakAsync(spellingStr, 'en-US', settings.enVoiceName || '', signal, spellingRate);
         if (signal.aborted) break;
         await delayAsync(500, signal);
 
