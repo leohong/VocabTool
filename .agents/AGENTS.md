@@ -61,14 +61,20 @@
 6. **🌐 Data Integrity & Schema Preservation**:
    * **Metrics Retention**: Data pruning/deduplication MUST preserve all SRS tracking fields (`archivedDate`, `step`, `interval`, `immune`, `totalFails`, `mistakesCount`, `correctCount`).
    * **Orphan Purge (Restoration Safety)**: Automatically drop orphaned mistake entries whose corresponding vocabulary words no longer exist in the active dictionary during backup rehydration.
+7. **🔘 4選1 測驗 (MCQ) UI 與發音控制規範**:
+   * **標籤與快速鍵**: 選項標籤與鍵盤快捷鍵嚴格採用 `1, 2, 3, 4` (含 Numpad)，不使用 A/B/C/D；4選1 模式下遮蔽左右方向鍵跳卡。
+   * **發音開關適應**: 卡片載入呼叫 `speak(currentWord.en, false)` 遵循全域 `speechEnabled` 開關；點選選項不重複朗讀。
+   * **物件級狀態重置**: `useEffect` 換卡重置依賴項須為 `[currentWord, ...]` 物件參考，確保連續相同字串時按鈕狀態 100% 歸零。
 
 ---
 
 ## 4. Testing & Local Server Protocols
 
+* **LocalStorage DB Mocking**: 測試腳本寫入 `vocab_currentDB` 時，必須同步寫入 `vocab_dbList: JSON.stringify(['testDB'])`，防止 state hook 降級回載入預設字庫。
 * **Dynamic Port Allocation**: ALWAYS bind to port `0` (OS auto-assignment) on host `127.0.0.1`. NEVER hardcode fixed ports (e.g., `8001`) to avoid IPv4/v6 resolution timeouts or port collision.
 * **Resource Reclamation**: Explicitly execute `httpd.shutdown()` and `httpd.server_close()` in `finally` blocks to prevent zombie listener processes.
 * **Non-blocking Server Execution**: On Windows, launch background dev servers using `start` (e.g., `start npm run serve`) to avoid blocking shell execution.
+* **Dual-Repo Sync**: 同步 `VocabTool` Web 庫時，需將 `www/index.html` 覆蓋至 `VocabTool/index.html`；推送遇遠端更新時統一執行 `git pull --rebase origin main`。
 
 ---
 
