@@ -51,6 +51,7 @@ def run_tests():
         driver.execute_script("""
             localStorage.clear();
             localStorage.setItem('vocab_currentDB', 'vocab_test');
+            localStorage.setItem('vocab_dbList', JSON.stringify(['vocab_test']));
             localStorage.setItem('vocab_customVocab_vocab_test', JSON.stringify([
                 { en: 'apple', zh: 'n. 蘋果', pos: 'n.', eg: 'This is an apple. (這是一顆蘋果。)' },
                 { en: 'Banana', zh: 'n. 香蕉', pos: 'n.', eg: 'I love Bananas. (我愛香蕉。)' },
@@ -180,8 +181,10 @@ def run_tests():
         time.sleep(10.0)
         
         # Stop and return
-        btn_stop = driver.find_element(By.XPATH, "//button[contains(., '停止並返回')]")
-        btn_stop.click()
+        driver.execute_script("""
+            const btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('離開') || b.textContent.includes('停止'));
+            if (btn) btn.click();
+        """)
         time.sleep(1.0)
         
         # Verify spoken history casing and translations

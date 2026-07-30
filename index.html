@@ -1606,6 +1606,7 @@ window.ScanningSession = ({
   const [mcqChoices, setMcqChoices] = React.useState([]);
   const [selectedIdx, setSelectedIdx] = React.useState(null);
   const [isAnswered, setIsAnswered] = React.useState(false);
+  const timerRef = React.useRef(null);
 
   // 剝離例句中的中文翻譯 (例如: "Sentence. (中文翻譯。)" ➔ "Sentence.")
   const getCleanExample = (egText) => {
@@ -1613,64 +1614,109 @@ window.ScanningSession = ({
     return egText.replace(/\s*[\(\（].*?[\)\）]\s*/g, '').trim();
   };
 
+  // 當 currentWord 變更時：進行清理、自動發音判斷與選項產生
   React.useEffect(() => {
-    if (!isMcqMode || !currentWord) return;
+    if (!currentWord) return;
 
-    setSelectedIdx(null);
-    setIsAnswered(false);
-
-    const correctZh = (currentWord.zh || '').trim();
-
-    // 彙整抽樣池：包含特訓字庫、錯題集中營與歷史殿堂的所有單字
-    const mistakesPool = (activeMistakesList || []).map(m => m.data || m);
-    const historyPool = Object.values(historicalMistakes || {}).map(h => h.data || h);
-    const combinedPool = [...(vocabList || []), ...mistakesPool, ...historyPool];
-
-    // 自字庫、錯題與歷史殿堂隨機挑選 3 個不重複的相異中文釋義干擾選項
-    const distractors = combinedPool
-      .filter(w => w && w.zh && w.zh.trim() && w.zh.trim() !== correctZh)
-      .map(w => w.zh.trim());
-
-    // 隨機洗牌干擾選項
-    const shuffledDistractors = distractors.sort(() => 0.5 - Math.random());
-    const uniqueDistractors = Array.from(new Set(shuffledDistractors)).slice(0, 3);
-
-    // 若字庫數量過少不足 3 個，補充預設輔助選項
-    const fallbackOptions = ['特別的', '重要的', '明顯的', '額外的', '基本的'];
-    while (uniqueDistractors.length < 3) {
-      const fb = fallbackOptions[Math.floor(Math.random() * fallbackOptions.length)];
-      if (fb !== correctZh && !uniqueDistractors.includes(fb)) {
-        uniqueDistractors.push(fb);
-      }
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
     }
 
-    const options = [
-      { text: correctZh, isCorrect: true },
-      ...uniqueDistractors.map(txt => ({ text: txt, isCorrect: false }))
-    ].sort(() => 0.5 - Math.random());
+    // 觸發全域自動發音 (isManual = false 遵循全域 speechEnabled 開關)
+    speak(currentWord.en, false);
 
-    setMcqChoices(options);
-  }, [currentWord?.en, isMcqMode, vocabList]);
+    if (isMcqMode) {
+      setSelectedIdx(null);
+      setIsAnswered(false);
+
+      const correctZh = (currentWord.zh || '').trim();
+
+      // 彙整抽樣池：包含特訓字庫、錯題集中營與歷史殿堂的所有單字
+      const mistakesPool = (activeMistakesList || []).map(m => m.data || m);
+      const historyPool = Object.values(historicalMistakes || {}).map(h => h.data || h);
+      const combinedPool = [...(vocabList || []), ...mistakesPool, ...historyPool];
+
+      // 自字庫、錯題與歷史殿堂隨機挑選 3 個不重複的相異中文釋義干擾選項
+      const distractors = combinedPool
+        .filter(w => w && w.zh && w.zh.trim() && w.zh.trim() !== correctZh)
+        .map(w => w.zh.trim());
+
+      // 隨機洗牌干擾選項
+      const shuffledDistractors = distractors.sort(() => 0.5 - Math.random());
+      const uniqueDistractors = Array.from(new Set(shuffledDistractors)).slice(0, 3);
+
+      // 若字庫數量過少不足 3 個，補充預設輔助選項
+      const fallbackOptions = ['特別的', '重要的', '明顯的', '額外的', '基本的'];
+      while (uniqueDistractors.length < 3) {
+        const fb = fallbackOptions[Math.floor(Math.random() * fallbackOptions.length)];
+        if (fb !== correctZh && !uniqueDistractors.includes(fb)) {
+          uniqueDistractors.push(fb);
+        }
+      }
+
+      const options = [
+        { text: correctZh, isCorrect: true },
+        ...uniqueDistractors.map(txt => ({ text: txt, isCorrect: false }))
+      ].sort(() => 0.5 - Math.random());
+
+      setMcqChoices(options);
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [currentWord, isMcqMode, vocabList]);
 
   const handleMcqSelect = (index, option) => {
     if (isAnswered) return;
     setIsAnswered(true);
     setSelectedIdx(index);
 
+    if (timerRef.current) clearTimeout(timerRef.current);
+
     if (option.isCorrect) {
-      speak(currentWord.en, true);
-      setTimeout(() => {
+      timerRef.current = setTimeout(() => {
         handleScan(true);
       }, 500);
     } else {
-      speak(currentWord.en, true);
-      setTimeout(() => {
+      timerRef.current = setTimeout(() => {
         handleScan(false);
       }, 1100);
     }
   };
 
-  const optionLabels = ['A', 'B', 'C', 'D'];
+  const optionLabels = ['1', '2', '3', '4'];
+
+  // 4選1 模式鍵盤快捷鍵支援 (僅使用 1, 2, 3, 4)
+  React.useEffect(() => {
+    if (!isMcqMode || isAnswered || mcqChoices.length < 4) return;
+
+    const handleMcqKeyDown = (e) => {
+      if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+
+      const keyMap = {
+        '1': 0, 'Digit1': 0, 'Numpad1': 0,
+        '2': 1, 'Digit2': 1, 'Numpad2': 1,
+        '3': 2, 'Digit3': 2, 'Numpad3': 2,
+        '4': 3, 'Digit4': 3, 'Numpad4': 3
+      };
+
+      const targetIdx = keyMap[e.key] ?? keyMap[e.code];
+      if (targetIdx !== undefined && mcqChoices[targetIdx]) {
+        e.preventDefault();
+        handleMcqSelect(targetIdx, mcqChoices[targetIdx]);
+      }
+    };
+
+    window.addEventListener('keydown', handleMcqKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleMcqKeyDown);
+    };
+  }, [isMcqMode, isAnswered, mcqChoices]);
 
   return (
     <div className="flex flex-col items-center animate-[fadeIn_0.3s_ease-in-out] w-full">
@@ -4609,15 +4655,21 @@ function App() {
         setUserInput('');
         setView(scanMode === 'mcq' ? 'scanning' : 'spelling');
       } else {
-        setQueue(currentSessionWords);
-        setCurrentWord(currentSessionWords[0]);
-        setTypoCount(0);
-        setMustTypeCorrectly(false);
-        setCopyFailCount(0);
-        if (correctTimerRef.current) clearTimeout(correctTimerRef.current);
-        setIsCorrectFeedback(false);
-        setUserInput('');
-        setView(scanMode === 'mcq' ? 'scanning' : 'spelling');
+        if (sessionType === 'daily') {
+          const todayStr = new Date().toDateString();
+          setState(prev => {
+            const last = prev.streak?.lastDate;
+            let newCount = prev.streak?.count || 0;
+            if (last !== todayStr) {
+              const yesterday = new Date();
+              yesterday.setDate(yesterday.getDate() - 1);
+              if (last === yesterday.toDateString()) newCount += 1;
+              else newCount = 1;
+            }
+            return { ...prev, streak: { count: newCount, lastDate: todayStr } };
+          });
+        }
+        setView('summary');
       }
     } else {
       setQueue(newQueue);
@@ -4628,7 +4680,8 @@ function App() {
   // 鍵盤操作監聽 (已移除觸控左右劃動，開放自由放大縮放與文字選取)
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (view === 'scanning' && currentWord) {
+      const isMcq = scanMode === 'mcq' && (sessionType === 'exam' || sessionType === 'history' || (sessionType === 'daily' && dailyStage === 2));
+      if (view === 'scanning' && currentWord && !isMcq) {
         if (e.key === 'ArrowLeft') handleScan(false);
         if (e.key === 'ArrowRight') handleScan(true);
       }
@@ -4637,7 +4690,7 @@ function App() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [view, currentWord, queue]);
+  }, [view, currentWord, queue, scanMode, sessionType, dailyStage]);
 
   const handleSpellingSubmit = (e) => {
     if (e) e.preventDefault();
