@@ -1696,6 +1696,7 @@ window.ScanningSession = ({
         handleScan(true);
       }, 500);
     } else {
+      speak(currentWord.en, true);
       timerRef.current = setTimeout(() => {
         handleScan(false);
       }, 1100);
@@ -4645,10 +4646,57 @@ function App() {
     const current = queue[0];
     const newQueue = queue.slice(1);
 
-    setState(prev => ({
-      ...prev,
-      learnedWords: prev.learnedWords.includes(current.en) ? prev.learnedWords : [...prev.learnedWords, current.en]
-    }));
+    const isTestingStage = sessionType === 'exam' || sessionType === 'history' || (sessionType === 'daily' && dailyStage === 2);
+
+    setState(prev => {
+      const nextState = { ...prev };
+
+      if (!nextState.learnedWords.includes(current.en)) {
+        nextState.learnedWords = [...nextState.learnedWords, current.en];
+      }
+
+      if (isKnown && isTestingStage) {
+        // 雙倍消除演算法 (Double Elimination Algorithm)
+        if (prev.mistakes[current.en]) {
+          const m = prev.mistakes[current.en];
+          const newCorrect = (m.correctCount || 0) + 1;
+          const target = Math.min(m.mistakesCount * 2, 6);
+
+          if (newCorrect >= target) {
+            const newHistory = { ...prev.historicalMistakes };
+            newHistory[current.en] = {
+              mistakesCount: m.mistakesCount,
+              totalFails: (newHistory[current.en]?.totalFails || 0) + m.mistakesCount,
+              archivedDate: Date.now(),
+              step: 0, interval: 7, immune: false, data: current
+            };
+            delete nextState.mistakes[current.en];
+            nextState.historicalMistakes = newHistory;
+          } else {
+            nextState.mistakes = { ...prev.mistakes, [current.en]: { ...m, correctCount: newCorrect } };
+          }
+        }
+
+        // 歷史幽靈 / 隨機抽查 SRS 進階
+        if (current._isGhost || current._isHistoryCheck) {
+          const intervals = [7, 21, 60, 180];
+          const h = current._historyData || prev.historicalMistakes[current.en];
+          if (h) {
+            const nextStep = (h.step || 0) + 1;
+            const newHistory = { ...nextState.historicalMistakes };
+
+            if (nextStep >= 4) {
+              newHistory[current.en] = { ...h, immune: true };
+            } else {
+              newHistory[current.en] = { ...h, step: nextStep, interval: intervals[nextStep], archivedDate: Date.now() };
+            }
+            nextState.historicalMistakes = newHistory;
+          }
+        }
+      }
+
+      return nextState;
+    });
 
     if (!isKnown) {
       current._hasCountedMistake = true;
