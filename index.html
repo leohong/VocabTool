@@ -1889,6 +1889,7 @@ window.useSessionLogic = ({
         await window.persistentStorage.setSetting(`vocab_tempSession_${dbName}`, null);
       } else if (window.confirm(`偵測到您有暫停存檔的「今日特訓」進度 (剩餘 ${tempSession.queue.length} 字)，是否繼續從上次暫停的地方開始？\n（選擇「取消」將放棄暫存進度並重新開始）`)) {
         setSessionType('daily');
+        setDailyStage(tempSession.dailyStage || 1);
         setCurrentSessionWords(tempSession.currentSessionWords || []);
         setQueue(tempSession.queue);
         if (tempSession.spellingState) {
@@ -2196,6 +2197,7 @@ window.useSessionLogic = ({
           date: new Date().toDateString(),
           view,
           sessionType,
+          dailyStage,
           dbName,
           queue,
           currentSessionWords,
