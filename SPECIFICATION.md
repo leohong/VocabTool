@@ -184,10 +184,11 @@ flowchart TD
 
 ### 4.2 特訓暫停存檔與斷點續做規格 (Temp Session & Resume Protocol)
 
+*   **邏輯換日線 (Logical Day Boundary)**：系統統一調用 `window.getLogicalDate()` 計算日期（將時間扣除 4 小時：`new Date(Date.now() - 4 * 60 * 60 * 1000).toDateString()`），防止夜貓子在深夜 23:55 ~ 01:30 特訓時因跨夜導致暫存檔無預警清空或打卡天數中斷。
 *   **暫存點觸發**：特訓過程中點擊右上角「暫停存檔」時，調用 `handleExitSession` 將當前狀態序列化寫入 Preferences：
     *   Key：`vocab_tempSession_{dbName}_{sessionType}`（例如 `vocab_tempSession_vocab_2000_daily`）
-    *   儲存資料：`{ date, view, sessionType, dailyStage, dbName, queue, currentSessionWords, spellingState, audioState }`
-*   **自動續做對話框**：點擊特訓按鈕時，系統異步檢查若 `tempSession` 存在且日期為當前日期：
+    *   儲存資料：`{ date: getLogicalDate(), view, sessionType, dailyStage, dbName, queue, currentSessionWords, spellingState, audioState }`
+*   **自動續做對話框**：點擊特訓按鈕時，系統異步檢查若 `tempSession` 存在且日期為當前邏輯日期：
     1.  **確認繼續**：還原 `dailyStage`、`queue`、`currentSessionWords`、`spellingState` 並跳轉至當前視圖 (`view`)。
     2.  **取消重來**：主動清除該暫存 Key 並重新計算並生成全組特訓題目。
 
@@ -219,7 +220,7 @@ flowchart TD
 
 ### 5.2 4 選 1 選擇題模式細節 (MCQ Mode Specifications)
 *   **選項標籤與鍵盤快捷鍵**：選項按鈕與鍵盤快捷鍵**嚴格使用 `1, 2, 3, 4`**（包含小鍵盤 `Numpad 1-4`），不使用 A, B, C, D。4選1 模式下主動停用左右方向鍵（`ArrowLeft` / `ArrowRight`）直接跳卡行為。
-*   **選項產生與例句遮蔽**：以當前題目單字的 `currentWord.zh` 為正確答案，並自 `vocabList`、`activeMistakesList` 與 `historicalMistakes` 混合池中抽取 3 個相異中文釋義作為干擾選項，隨機打亂產生 4 個按鈕。隱藏中文釋義 `{currentWord.zh}`，例句遮蔽括號內的中文翻譯。
+*   **POS 詞性對齊動態干擾池 (POS Matching Distractor Pool)**：干擾選項優先自 `vocabList`、`mistakesPool`、`historyPool` 與全域 `window.rawVocab` 池中抽樣**相同詞性 (`w.pos === targetPos`)** 的相異中文釋義，若相同詞性不足才補充一般相異釋義，徹底消除固定輔助詞（如「特別的」）之心理性作答規律。
 *   **全域發音開關適應**：卡片載入時呼叫 `speak(currentWord.en, false)`，傳入 `isManual = false` 嚴格遵循全域「📢 自動發音:」（`speechEnabled`）開關。點選選項答題時不觸發二次朗讀；點擊右上角喇叭圖示傳入 `isManual = true` 可隨時手動播放。
 *   **物件級狀態與換卡重置**：`useEffect` 換卡重置依賴項須監聽 `currentWord` 物件參考變更，確保連續相同單字時按鈕顏色與解答狀態 100% 歸零。使用 `timerRef` 在換卡與離開時安全清除 500ms/1100ms 答題定時器。
 *   **答題反饋與結算過渡**：
@@ -229,9 +230,10 @@ flowchart TD
 
 ### 5.3 第二階段：強制盲測 (Forced Spelling Test)
 *   **規則**：篩選結束後打亂不熟單字，隱藏英文拼寫，僅顯示中文釋義、詞性與底線長度占位符（例如 `_ _ _ _ _`）。
-*   **懲罰邏輯**：
+*   **懲罰與毒瘤單字佇列重推 (Leach Card Requeue)**：
     1.  **手滑警告 (Slip Warning)**：本輪首次拼錯時發出震動提示，給予第二次輸入機會。
-    2.  **失憶強迫重抄 (Strict Correction)**：第二次拼錯時鎖定輸入框，以亮綠色顯示正確拼寫，**強迫使用者對著正確答案完整抄寫一遍**，且該字答對次數歸零，錯題數 +1。
+    2.  **失憶強迫重抄 (Strict Correction)**：第二次拼錯時鎖定輸入框，以亮綠色顯示正確拼寫，強迫使用者對著正確答案完整抄寫一遍，且該字答對次數歸零，錯題數 +1。
+    3.  **毒瘤卡佇列重推 (Requeue to End)**：若連續重抄失敗達 3 次（`copyFailCount >= 3`），系統將跳出提示並將該毒瘤單字**重推至當次特訓佇列末端 (`[...queue.slice(1), currentWord]`)**，確保使用者在離開特訓前當場完成最後一次複習。
 
 ### 5.4 雙倍消除演算法 (Double Elimination Algorithm)
 單字必須在盲測中連續拼對指定次數方可畢業：
@@ -243,10 +245,11 @@ $$\text{連續拼對目標次數} = \text{Min}(\text{該字錯誤次數} \times 
 *   **數據正規化解法**：引進 `completedWordsCount` 累計已完成單字索引指標（預設 `0`），作為字庫切割的絕對參考點：
     *   **每日新字起點索引**：$\text{startIndex} = \text{completedWordsCount}$
     *   **視覺天數動態換算**：$\text{currentDay} = \lfloor \text{completedWordsCount} / \text{wordsPerDay} \rfloor + 1$
-*   **無痛調整與動態切換**：
+*   **無痛調整與全字庫通關 (Daily Maintenance Mode)**：
     1.  使用者隨時修改 `wordsPerDay` 時，`completedWordsCount` 保持固定不變，UI 之 `currentDay` 自動重新算定並連動下拉選單。
-    2.  特訓結算時，$\text{completedWordsCount}_{\text{new}} = \text{completedWordsCount}_{\text{old}} + \text{當次基本單字數}$。
+    2.  特訓結算時，$\text{completedWordsCount}_{\text{new}} = \text{Min}(\text{vocabList.length}, \text{completedWordsCount}_{\text{old}} + \text{當次基本單字數})$。
     3.  使用者手動選擇 Header 下拉選單「第 X 天」時，同步修正 $\text{completedWordsCount} = (X - 1) \times \text{wordsPerDay}$。
+    4.  **🏆 殿堂大師 / 全字庫通關模式**：當 `completedWordsCount >= vocabList.length` 時，Header 選單自動轉化為「🏆 特訓結業」榮譽勳章，點擊發動特訓自動進入**每日保養模式 (Daily Maintenance Mode)**，隨機抽取 30~50 字進行維護性抽查，徹底防止末端無窮迴圈與索引溢位。
 
 ---
 
