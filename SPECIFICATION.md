@@ -166,6 +166,21 @@ flowchart TD
     I -- "點擊取消" --> N["中斷匯入作業"]
 ```
 
+### 4.1 數字輸入框 UX 規範 (Deferred Validation Pattern)
+
+所有 `type="number"` 自由輸入框均採用**延遲防呆 (onBlur Validation)** 模式，禁止在 `onChange` 中即時修正數值：
+
+*   **`onChange`**：僅更新 state，允許使用者自由輸入（含清空或輸入 `0`），不做任何修正。
+    ```js
+    onChange={(e) => setValue(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+    ```
+*   **`onBlur`**：使用者離開焦點後，才執行範圍修正（`Math.max` / `Math.min` / 預設值回填）。
+    ```js
+    onBlur={(e) => setValue(Math.max(MIN, parseInt(e.target.value, 10) || DEFAULT))}
+    ```
+
+**適用輸入框**：`🎯 每日新字`、`👻 每日幽靈`、聽讀播放器「自訂編號範圍起」、「自訂編號範圍訖」。
+
 ---
 
 ## 5. 特訓流水線與全域特訓模式 (Training Pipeline & Modes)

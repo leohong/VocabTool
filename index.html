@@ -3727,7 +3727,8 @@ window.AudioSetupModal = ({
                     min="1"
                     max={totalSourceWords}
                     value={audioStartIdx}
-                    onChange={(e) => setAudioStartIdx(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    onChange={(e) => setAudioStartIdx(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                    onBlur={(e) => setAudioStartIdx(Math.max(1, parseInt(e.target.value, 10) || 1))}
                     className="w-16 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-center font-mono text-indigo-300"
                   />
                   <span className="text-slate-400">到:</span>
@@ -3736,7 +3737,8 @@ window.AudioSetupModal = ({
                     min="1"
                     max={totalSourceWords}
                     value={audioEndIdx}
-                    onChange={(e) => setAudioEndIdx(Math.min(totalSourceWords, Math.max(1, parseInt(e.target.value, 10) || 1)))}
+                    onChange={(e) => setAudioEndIdx(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                    onBlur={(e) => setAudioEndIdx(Math.min(totalSourceWords, Math.max(1, parseInt(e.target.value, 10) || 1)))}
                     className="w-16 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-center font-mono text-indigo-300"
                   />
                   <span className="text-slate-500 text-xs">/ 共 {totalSourceWords} 字</span>
