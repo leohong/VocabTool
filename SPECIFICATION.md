@@ -228,6 +228,17 @@ flowchart TD
 單字必須在盲測中連續拼對指定次數方可畢業：
 $$\text{連續拼對目標次數} = \text{Min}(\text{該字錯誤次數} \times 2, 6)$$
 
+### 5.5 累計已學單字索引與每日字數無痛調整規格 (Absolute Index & Dynamic Days Specification)
+
+*   **痛點與問題**：若每日新單字起點僅由固定天數公式 $(\text{currentDay} - 1) \times \text{wordsPerDay}$ 計算，當使用者調整 `wordsPerDay`（例如自 50 字改為 20 字）時，起點計算結果改變將導致學習進度大幅倒退或跳過單字。
+*   **數據正規化解法**：引進 `completedWordsCount` 累計已完成單字索引指標（預設 `0`），作為字庫切割的絕對參考點：
+    *   **每日新字起點索引**：$\text{startIndex} = \text{completedWordsCount}$
+    *   **視覺天數動態換算**：$\text{currentDay} = \lfloor \text{completedWordsCount} / \text{wordsPerDay} \rfloor + 1$
+*   **無痛調整與動態切換**：
+    1.  使用者隨時修改 `wordsPerDay` 時，`completedWordsCount` 保持固定不變，UI 之 `currentDay` 自動重新算定並連動下拉選單。
+    2.  特訓結算時，$\text{completedWordsCount}_{\text{new}} = \text{completedWordsCount}_{\text{old}} + \text{當次基本單字數}$。
+    3.  使用者手動選擇 Header 下拉選單「第 X 天」時，同步修正 $\text{completedWordsCount} = (X - 1) \times \text{wordsPerDay}$。
+
 ---
 
 ## 6. 間隔重複與歷史殿堂 (Spaced Repetition System - SRS)
