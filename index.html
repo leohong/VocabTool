@@ -635,19 +635,23 @@ window.exportImportUtils = {
           const rehydratedHistorical = rehydrateMistakes(rawHistorical, vocabList);
           const rehydratedActiveMistakes = rehydrateMistakes(rawActiveMistakes, vocabList);
 
-          const rawWordsPerDay = rawDb.settings?.wordsPerDay ?? rawDb.wordsPerDay;
-          const rawGhostsPerDay = rawDb.settings?.ghostsPerDay ?? rawDb.ghostsPerDay;
+          const safeWPD = parseInt(rawWordsPerDay, 10) || 50;
+          const parsedCurrentDay = parseInt(rawState.currentDay, 10) || 1;
+          const parsedCompletedCount = (typeof rawState.completedWordsCount === 'number' && !isNaN(rawState.completedWordsCount) && rawState.completedWordsCount >= 0)
+            ? rawState.completedWordsCount
+            : Math.max(0, (parsedCurrentDay - 1) * safeWPD);
 
           parsedDatabases[dbName] = {
             vocabList,
             state: {
-              currentDay: parseInt(rawState.currentDay, 10) || 1,
+              currentDay: Math.floor(parsedCompletedCount / safeWPD) + 1,
+              completedWordsCount: parsedCompletedCount,
               learnedWords: Array.isArray(rawState.learnedWords) ? rawState.learnedWords : (Array.isArray(rawState.learned) ? rawState.learned : []),
               mistakes: rehydratedActiveMistakes,
               historicalMistakes: rehydratedHistorical,
               streak: rawState.streak || { count: 0, lastDate: null }
             },
-            wordsPerDay: parseInt(rawWordsPerDay, 10) || 50,
+            wordsPerDay: safeWPD,
             ghostsPerDay: parseInt(rawGhostsPerDay, 10) || 10
           };
         }
@@ -958,10 +962,16 @@ window.calculateIndicator = (mistakesTotal, historicalMistakesCount = 0) => {
 };
 
 // 獲取本日進度單字清單
-window.getDailyWordsList = (vocabList, currentDay, wordsPerDay) => {
+window.getDailyWordsList = (vocabList, currentDay, wordsPerDay, completedWordsCount) => {
   if (!vocabList || vocabList.length === 0) return [];
-  const startIdx = (currentDay - 1) * (parseInt(wordsPerDay, 10) || 50);
-  return vocabList.slice(startIdx, startIdx + (parseInt(wordsPerDay, 10) || 50));
+  const safeWPD = Math.max(1, parseInt(wordsPerDay, 10) || 50);
+  let startIdx;
+  if (typeof completedWordsCount === 'number' && !isNaN(completedWordsCount) && completedWordsCount >= 0) {
+    startIdx = completedWordsCount;
+  } else {
+    startIdx = Math.max(0, ((currentDay || 1) - 1) * safeWPD);
+  }
+  return vocabList.slice(startIdx, startIdx + safeWPD);
 };
 
 // 獲取過濾搜尋單字清單
@@ -978,11 +988,18 @@ window.getFilteredVocabList = (vocabList, query) => {
 
 // Pure function: 計算今日基本單字 + 幽靈字，供多個 Hook 共用
 // 不依賴 React state，所有資料皆由參數傳入
-window.computeDailyWords = (vocabList, currentDay, wordsPerDay, ghostsPerDay, historicalMistakes) => {
+window.computeDailyWords = (vocabList, currentDay, wordsPerDay, ghostsPerDay, historicalMistakes, completedWordsCount) => {
   // 防禦：onBlur 前 state 可能暫時為空字串或 NaN，強制回落預設值
   const safeWPD = Math.max(1, parseInt(wordsPerDay, 10) || 50);
   const safeGPD = Math.max(0, parseInt(ghostsPerDay, 10) || 0);
-  const startIndex = (currentDay - 1) * safeWPD;
+  
+  let startIndex;
+  if (typeof completedWordsCount === 'number' && !isNaN(completedWordsCount) && completedWordsCount >= 0) {
+    startIndex = completedWordsCount;
+  } else {
+    startIndex = Math.max(0, ((currentDay || 1) - 1) * safeWPD);
+  }
+
   let baseWords = vocabList.slice(startIndex, startIndex + safeWPD);
   if (baseWords.length === 0 && vocabList.length > 0) baseWords = vocabList.slice(-safeWPD);
 
@@ -1011,6 +1028,7 @@ window.computeDailyWords = (vocabList, currentDay, wordsPerDay, ghostsPerDay, hi
 window.useVocabState = () => {
   const defaultState = {
     currentDay: 1,
+    completedWordsCount: 0,
     learnedWords: [],
     mistakes: {},
     historicalMistakes: {},
@@ -1029,14 +1047,6 @@ window.useVocabState = () => {
   const loadDatabaseData = async (targetDb) => {
     console.log(`[Storage] loadDatabaseData for: ${targetDb}`);
     
-    // 讀取狀態
-    const savedState = await window.persistentStorage.loadDbState(targetDb);
-    setState(savedState ? { ...defaultState, ...savedState } : defaultState);
-
-    // 讀取單字庫
-    const savedVocab = await window.persistentStorage.loadDatabase(targetDb);
-    setVocabList(savedVocab && savedVocab.length > 0 ? savedVocab : window.rawVocab || []);
-
     // 讀取每日新字數與幽靈數限制
     const savedWords = await window.persistentStorage.getSetting(`vocab_wordsPerDay_${targetDb}`, 50);
     const safeWords = (typeof savedWords === 'number' && !isNaN(savedWords) && savedWords > 0) ? savedWords : 50;
@@ -1045,6 +1055,19 @@ window.useVocabState = () => {
     const savedGhosts = await window.persistentStorage.getSetting(`vocab_ghostsPerDay_${targetDb}`, 10);
     const safeGhosts = (typeof savedGhosts === 'number' && !isNaN(savedGhosts) && savedGhosts >= 0) ? savedGhosts : 10;
     setGhostsPerDay(safeGhosts);
+
+    // 讀取狀態
+    const savedState = await window.persistentStorage.loadDbState(targetDb);
+    const loadedState = savedState ? { ...defaultState, ...savedState } : { ...defaultState };
+    if (typeof loadedState.completedWordsCount !== 'number' || isNaN(loadedState.completedWordsCount)) {
+      loadedState.completedWordsCount = Math.max(0, ((loadedState.currentDay || 1) - 1) * safeWords);
+    }
+    loadedState.currentDay = Math.floor(loadedState.completedWordsCount / safeWords) + 1;
+    setState(loadedState);
+
+    // 讀取單字庫
+    const savedVocab = await window.persistentStorage.loadDatabase(targetDb);
+    setVocabList(savedVocab && savedVocab.length > 0 ? savedVocab : window.rawVocab || []);
   };
 
   // 全域初始化讀取 (僅在 App 載入時執行一次)
@@ -1094,7 +1117,16 @@ window.useVocabState = () => {
 
   React.useEffect(() => {
     if (isStorageLoaded && dbName) {
-      window.persistentStorage.setSetting(`vocab_wordsPerDay_${dbName}`, wordsPerDay);
+      const safeWPD = Math.max(1, parseInt(wordsPerDay, 10) || 50);
+      window.persistentStorage.setSetting(`vocab_wordsPerDay_${dbName}`, safeWPD);
+      setState(prev => {
+        const count = typeof prev.completedWordsCount === 'number' ? prev.completedWordsCount : Math.max(0, ((prev.currentDay || 1) - 1) * safeWPD);
+        const newDay = Math.floor(count / safeWPD) + 1;
+        if (newDay !== prev.currentDay) {
+          return { ...prev, currentDay: newDay };
+        }
+        return prev;
+      });
     }
   }, [wordsPerDay, dbName, isStorageLoaded]);
 
@@ -1854,14 +1886,24 @@ window.useSessionLogic = ({
         const todayStr = new Date().toDateString();
         setState(prev => {
           const last = prev.streak?.lastDate;
-          let newCount = prev.streak?.count || 0;
+          let newStreak = prev.streak?.count || 0;
           if (last !== todayStr) {
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
-            if (last === yesterday.toDateString()) newCount += 1;
-            else newCount = 1;
+            if (last === yesterday.toDateString()) newStreak += 1;
+            else newStreak = 1;
           }
-          return { ...prev, streak: { count: newCount, lastDate: todayStr } };
+          const safeWPD = Math.max(1, parseInt(wordsPerDay, 10) || 50);
+          const baseWordsCount = (currentSessionWords || []).filter(w => !w._isGhost).length || safeWPD;
+          const prevCompleted = typeof prev.completedWordsCount === 'number' ? prev.completedWordsCount : Math.max(0, ((prev.currentDay || 1) - 1) * safeWPD);
+          const newCompletedCount = prevCompleted + baseWordsCount;
+          const newDay = Math.floor(newCompletedCount / safeWPD) + 1;
+          return {
+            ...prev,
+            completedWordsCount: newCompletedCount,
+            currentDay: newDay,
+            streak: { count: newStreak, lastDate: todayStr }
+          };
         });
       }
       (setViewFn || setView)('summary');
@@ -1910,7 +1952,7 @@ window.useSessionLogic = ({
       }
     }
 
-    const { baseWords, ghostWords } = window.computeDailyWords(vocabList, currentDay, wordsPerDay, ghostsPerDay, historicalMistakes);
+    const { baseWords, ghostWords } = window.computeDailyWords(vocabList, currentDay, wordsPerDay, ghostsPerDay, historicalMistakes, state.completedWordsCount);
     if (baseWords.length === 0) return alert('字典為空，請先匯入字庫！');
 
     const initializedWords = baseWords.map(w => ({ ...w, _hasCountedMistake: false }));
@@ -2065,14 +2107,24 @@ window.useSessionLogic = ({
           const todayStr = new Date().toDateString();
           setState(prev => {
             const last = prev.streak?.lastDate;
-            let newCount = prev.streak?.count || 0;
+            let newStreak = prev.streak?.count || 0;
             if (last !== todayStr) {
               const yesterday = new Date();
               yesterday.setDate(yesterday.getDate() - 1);
-              if (last === yesterday.toDateString()) newCount += 1;
-              else newCount = 1;
+              if (last === yesterday.toDateString()) newStreak += 1;
+              else newStreak = 1;
             }
-            return { ...prev, streak: { count: newCount, lastDate: todayStr } };
+            const safeWPD = Math.max(1, parseInt(wordsPerDay, 10) || 50);
+            const baseWordsCount = (currentSessionWords || []).filter(w => !w._isGhost).length || safeWPD;
+            const prevCompleted = typeof prev.completedWordsCount === 'number' ? prev.completedWordsCount : Math.max(0, ((prev.currentDay || 1) - 1) * safeWPD);
+            const newCompletedCount = prevCompleted + baseWordsCount;
+            const newDay = Math.floor(newCompletedCount / safeWPD) + 1;
+            return {
+              ...prev,
+              completedWordsCount: newCompletedCount,
+              currentDay: newDay,
+              streak: { count: newStreak, lastDate: todayStr }
+            };
           });
         }
         setView('summary');
@@ -2217,7 +2269,30 @@ window.useSessionLogic = ({
 
   // --- goToNextDay ---
   const goToNextDay = () => {
-    if (sessionType === 'daily') setState(prev => ({ ...prev, currentDay: prev.currentDay + 1 }));
+    if (sessionType === 'daily') {
+      const todayStr = new Date().toDateString();
+      setState(prev => {
+        const last = prev.streak?.lastDate;
+        let newStreak = prev.streak?.count || 0;
+        if (last !== todayStr) {
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          if (last === yesterday.toDateString()) newStreak += 1;
+          else newStreak = 1;
+        }
+        const safeWPD = Math.max(1, parseInt(wordsPerDay, 10) || 50);
+        const baseWordsCount = (currentSessionWords || []).filter(w => !w._isGhost).length || safeWPD;
+        const prevCompleted = typeof prev.completedWordsCount === 'number' ? prev.completedWordsCount : Math.max(0, ((prev.currentDay || 1) - 1) * safeWPD);
+        const newCompletedCount = prevCompleted + baseWordsCount;
+        const newDay = Math.floor(newCompletedCount / safeWPD) + 1;
+        return {
+          ...prev,
+          completedWordsCount: newCompletedCount,
+          currentDay: newDay,
+          streak: { count: newStreak, lastDate: todayStr }
+        };
+      });
+    }
     setView('dashboard');
   };
 
@@ -5237,7 +5312,7 @@ function App() {
   if (mistakesTotal >= 100) indicator = { color: 'text-red-400', border: 'border-red-500/40', bg: 'bg-red-950/30', icon: '🔴', title: '過載' };
 
   // getDailyWords wrapper (for PreviewModal backward compat)
-  const getDailyWords = () => window.computeDailyWords(vocabList, currentDay, wordsPerDay, ghostsPerDay, historicalMistakes);
+  const getDailyWords = () => window.computeDailyWords(vocabList, currentDay, wordsPerDay, ghostsPerDay, historicalMistakes, state.completedWordsCount);
 
   const handleAudioSetupClick = async () => {
     const key = `vocab_tempSession_${dbName}_audio`;
@@ -6002,7 +6077,7 @@ function App() {
           mistakesTotal={mistakesTotal}
           streak={streak}
           currentDay={currentDay}
-          setCurrentDay={(d) => setState(prev => ({ ...prev, currentDay: d }))}
+          setCurrentDay={(d) => setState(prev => ({ ...prev, currentDay: d, completedWordsCount: Math.max(0, (d - 1) * Math.max(1, parseInt(wordsPerDay, 10) || 50)) }))}
           vocabListLength={vocabList.length}
           wordsPerDay={wordsPerDay}
           view={view}

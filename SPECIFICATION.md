@@ -66,7 +66,8 @@ interface HistoricalMistakeEntry {
 }
 
 interface DBState {
-  currentDay: number;                                // 目前特訓天數 (第 1 天起算)
+  currentDay: number;                                // 視覺特訓天數 (依據 completedWordsCount / wordsPerDay 動態換算)
+  completedWordsCount: number;                       // 累計已完成/已解鎖單字索引 (防止變更每日新字數時進度倒退)
   learnedWords: string[];                            // 已完成學習的英文單字列表 (以英文 Key 為元素)
   mistakes: Record<string, ActiveMistakeEntry>;      // 當前錯題集中營 (Key 為單字 en)
   historicalMistakes: Record<string, HistoricalMistakeEntry>; // 歷史殿堂數據 (Key 為單字 en)
