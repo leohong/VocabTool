@@ -182,6 +182,15 @@ flowchart TD
 
 **適用輸入框**：`🎯 每日新字`、`👻 每日幽靈`、聽讀播放器「自訂編號範圍起」、「自訂編號範圍訖」。
 
+### 4.2 特訓暫停存檔與斷點續做規格 (Temp Session & Resume Protocol)
+
+*   **暫存點觸發**：特訓過程中點擊右上角「暫停存檔」時，調用 `handleExitSession` 將當前狀態序列化寫入 Preferences：
+    *   Key：`vocab_tempSession_{dbName}_{sessionType}`（例如 `vocab_tempSession_vocab_2000_daily`）
+    *   儲存資料：`{ date, view, sessionType, dailyStage, dbName, queue, currentSessionWords, spellingState, audioState }`
+*   **自動續做對話框**：點擊特訓按鈕時，系統異步檢查若 `tempSession` 存在且日期為當前日期：
+    1.  **確認繼續**：還原 `dailyStage`、`queue`、`currentSessionWords`、`spellingState` 並跳轉至當前視圖 (`view`)。
+    2.  **取消重來**：主動清除該暫存 Key 並重新計算並生成全組特訓題目。
+
 ---
 
 ## 5. 特訓流水線與全域特訓模式 (Training Pipeline & Modes)
@@ -250,6 +259,8 @@ $$\text{連續拼對目標次數} = \text{Min}(\text{該字錯誤次數} \times 
 *   **Stage 4**：180 天後抽查 (`interval: 180`, `step: 3`)
 *   **Stage 5 (永久免疫 🛡️)**：通過 180 天抽查後永久封存 (`immune: true`)，不再突襲。
 
+*   **抽查與雙模式推進規則**：當歷史抽查單字 (`_isHistoryCheck: true`) 或幽靈單字 (`_isGhost: true`) 在測驗（含 🔘 4選1模式 與 🎴/🎲 拼寫盲測）中被標記為「認識 / 正確」時，系統讀取其 `_historyData` 或自 `historicalMistakes` 中檢索，將其 SRS `step` + 1，並按 `[7, 21, 60, 180]` 天更新下一次 `archivedDate` 與 `interval`；當 `step >= 4` 時自動標記 `immune: true` 進入永久免疫。若測驗答錯，則退回錯題集中營重新接受雙倍消除懲罰。
+
 ---
 
 ## 7. 聽寫背單字特訓播放器 (Audio Dictation Player)
@@ -288,7 +299,10 @@ $$\text{連續拼對目標次數} = \text{Min}(\text{該字錯誤次數} \times 
     -   `exportImportUtils.js`：正規化備份打包 (`buildNormalizedBackup`) 與通用防禦型匯入解析 (`parseUniversalBackup`)。
     -   `persistentStorage.js`：跨平台沙盒檔案與偏好設定持久化介面 (`loadDatabase`, `saveDbState`, `deleteDatabaseFiles`, `removeSetting`)。
 2.  **`hooks/` (React 業務狀態與生命週期)**：
-    -   `useVocabState.js`：單字字典儲存、天數切換與自動儲存。
+    -   `useVocabState.js`：單字字典儲存、天數/累計字數切換與自動持久化。
+    -   `useSessionLogic.js`：特訓佇列 (Queue) 管理、閃卡/MCQ/拼字提交、雙倍消除與 SRS 晉級演算法、暫停續做處理。
+    -   `useAudioSession.js`：TTS 引擎控制、盲聽播放器佇列生成與迴圈控制、Wake Lock 鎖屏管理。
+    -   `useOtaUpdate.js`：背景 OTA 熱更新檢測、下載解壓與安全重啟流程。
 3.  **`components/` (視覺元件，純 JSX)**：
     -   `Icons.js`：全域 SVG 元件。
     -   `Header.js`、`Dashboard.js`、`Sessions.js`、`AudioPlayer.js`、`Modals.js` (含 `HistoryModal.js`, `MistakeModal.js`)。
