@@ -493,8 +493,8 @@ window.exportHistoryTXT = (historicalMistakes, vocabList, dbName) => {
   if (historyList.length === 0) return alert("歷史殿堂目前空空如也，無需匯出。");
   let content = `=== 歷史殿堂單字個人紀錄 ===\n\n`;
   historyList.forEach((m, idx) => {
-    const itemData = (m && m.data) || { en: m?.en || '', zh: '[單字已自字典移除]', pos: 'n.', eg: '' };
-    const vocabWord = (vocabList || []).find(w => w.en === itemData.en);
+    const itemData = window.getWordData(m, vocabList);
+    const vocabWord = (vocabList || []).find(w => window.normalizeKey(w.en) === window.normalizeKey(itemData.en));
     const currentEg = (vocabWord && vocabWord.eg) || itemData.eg || '';
     content += `${idx + 1}. 錯誤次數: ${m.mistakesCount || m.totalFails || 0}次 | [${itemData.pos || 'n.'}] ${itemData.en || ''} --> ${itemData.zh || ''}${currentEg ? ` || ${currentEg}` : ''}\n`;
   });
@@ -505,7 +505,7 @@ window.exportHistoryTXT = (historicalMistakes, vocabList, dbName) => {
 // --- 🌐 正規化極致輕量與無鎖相容備份系統 ---
 // ==========================================
 window.exportImportUtils = {
-  // 正規化極致輕量備份打包 (v3.0：剝離 mistakes/historicalMistakes 中重複的 data 實體，保留所有 SRS 冷卻與失誤指標)
+  // 正規化極致輕量備份打包 (v3.1：外鍵 key 導向正規化、剝離重複 data 實體，附帶 schemaVersion 與 meta.schemaSpec 詮釋資料)
   buildNormalizedBackup: (allDatabasesData, globalSettings) => {
     const normalizedDbs = {};
 
@@ -517,8 +517,9 @@ window.exportImportUtils = {
           const normalizedHistorical = {};
           for (const [enKey, mistakeObj] of Object.entries(origState.historicalMistakes)) {
             if (!mistakeObj) continue;
+            const cleanKey = window.normalizeKey(enKey) || enKey;
             const { data, ...rest } = mistakeObj;
-            normalizedHistorical[enKey] = rest;
+            normalizedHistorical[cleanKey] = { ...rest, en: cleanKey };
           }
           origState.historicalMistakes = normalizedHistorical;
         }
@@ -528,8 +529,9 @@ window.exportImportUtils = {
           const normalizedMistakes = {};
           for (const [enKey, mistakeObj] of Object.entries(origState.mistakes)) {
             if (!mistakeObj) continue;
+            const cleanKey = window.normalizeKey(enKey) || enKey;
             const { data, ...rest } = mistakeObj;
-            normalizedMistakes[enKey] = rest;
+            normalizedMistakes[cleanKey] = { ...rest, en: cleanKey };
           }
           origState.mistakes = normalizedMistakes;
         }
@@ -546,9 +548,21 @@ window.exportImportUtils = {
     }
 
     return {
-      version: "3.0",
+      version: "3.1",
+      schemaVersion: "3.1.0",
+      appVersion: "1.9.0",
       backupType: "normalized_system",
       exportDate: new Date().toISOString(),
+      meta: {
+        generator: "VocabTool-App",
+        specNotice: "v3.1 Normalized Foreign Key Architecture",
+        schemaSpec: {
+          wordEntity: ["en", "pos", "zh", "eg"],
+          activeMistake: ["mistakesCount", "correctCount"],
+          historicalMistake: ["mistakesCount", "totalFails", "archivedDate", "step", "interval", "immune"],
+          dbState: ["currentDay", "completedWordsCount", "learnedWords", "mistakes", "historicalMistakes", "streak"]
+        }
+      },
       globalSettings: {
         currentDB: globalSettings.currentDB || 'vocab_2000',
         dbList: globalSettings.dbList || ['vocab_2000', 'vocab_7000'],
@@ -1004,6 +1018,35 @@ window.getFilteredVocabList = (vocabList, query) => {
   );
 };
 
+// 全域 Key 正規化處理 (去首尾空格並轉小寫，確保單字 Key 絕對一致)
+window.normalizeKey = (key) => (typeof key === 'string' ? key.trim().toLowerCase() : '');
+
+// 全域 Safe Word Resolver (多階層動態安全單字檢索器)
+// 支持零資料冗餘外鍵 Key 檢索、舊版 hydrated 結構相容與孤兒單字保底
+window.getWordData = (entry, vocabMapOrList) => {
+  if (!entry) return { en: '', pos: 'n.', zh: '[無單字資料]', eg: '' };
+  
+  // 1. 舊版 Hydrated 結構相容 (若 entry 內建 data 或本身為 Word 實體)
+  if (typeof entry === 'object' && entry.data && entry.data.en) return entry.data;
+  if (typeof entry === 'object' && entry.en && entry.zh) return entry;
+  
+  // 2. 提取 en key 並進行全域正規化
+  const rawKey = typeof entry === 'string' ? entry : (entry.en || entry.word || '');
+  const cleanKey = window.normalizeKey(rawKey);
+  if (!cleanKey) return { en: '', pos: 'n.', zh: '[無單字資料]', eg: '' };
+
+  // 3. $O(1)$ 哈希快速查找 (Map) 或 $O(N)$ 陣列查找 (Array)
+  let found = null;
+  if (vocabMapOrList instanceof Map) {
+    found = vocabMapOrList.get(cleanKey);
+  } else if (Array.isArray(vocabMapOrList)) {
+    found = vocabMapOrList.find(w => w && w.en && window.normalizeKey(w.en) === cleanKey);
+  }
+
+  if (found) return found;
+  return { en: rawKey || cleanKey, pos: 'n.', zh: '[單字已自字典移除]', eg: '' };
+};
+
 // Pure function: 計算今日基本單字 + 幽靈字，供多個 Hook 共用
 // 不依賴 React state，所有資料皆由參數傳入
 window.computeDailyWords = (vocabList, currentDay, wordsPerDay, ghostsPerDay, historicalMistakes, completedWordsCount) => {
@@ -1034,17 +1077,24 @@ window.computeDailyWords = (vocabList, currentDay, wordsPerDay, ghostsPerDay, hi
     baseWords = [];
   }
 
-  const baseEnSet = new Set(baseWords.map(w => w.en));
+  const baseEnSet = new Set(baseWords.map(w => window.normalizeKey(w.en)));
   const now = Date.now();
 
   const ghostWords = Object.values(historicalMistakes || {})
-    .filter(h => !h.immune && (now - h.archivedDate) >= (h.interval * 24 * 60 * 60 * 1000))
-    .filter(h => !baseEnSet.has(h.data.en))
+    .filter(h => h && !h.immune && (now - (h.archivedDate || 0)) >= ((h.interval || 7) * 24 * 60 * 60 * 1000))
+    .filter(h => {
+      const wordData = window.getWordData(h, vocabList);
+      return wordData && wordData.en && !baseEnSet.has(window.normalizeKey(wordData.en));
+    })
     .slice(0, safeGPD)
-    .map(h => ({ ...h.data, _hasCountedMistake: false, _isGhost: true, _historyData: h }));
+    .map(h => {
+      const wordData = window.getWordData(h, vocabList);
+      return { ...wordData, _hasCountedMistake: false, _isGhost: true, _historyData: h };
+    });
 
   return { baseWords, ghostWords, isMasteredMode };
 };
+
 
 
     // ==========================================
@@ -1173,6 +1223,19 @@ window.useVocabState = () => {
     }
   }, [dbList, isStorageLoaded]);
 
+  // 建立全域 O(1) 哈希快取與安全單字 Selector
+  const vocabMap = React.useMemo(() => {
+    const map = new Map();
+    (vocabList || []).forEach(w => {
+      if (w && w.en) map.set(window.normalizeKey(w.en), w);
+    });
+    return map;
+  }, [vocabList]);
+
+  const getWord = React.useCallback((keyOrEntry) => {
+    return window.getWordData(keyOrEntry, vocabMap);
+  }, [vocabMap]);
+
   return {
     dbName,
     setDbName: changeDatabase,
@@ -1182,6 +1245,8 @@ window.useVocabState = () => {
     setState,
     vocabList,
     setVocabList,
+    vocabMap,
+    getWord,
     wordsPerDay,
     setWordsPerDay,
     ghostsPerDay,
@@ -1191,6 +1256,7 @@ window.useVocabState = () => {
     initAllData
   };
 };
+
 
 
     // ==========================================
@@ -2003,7 +2069,7 @@ window.useSessionLogic = ({
     await window.persistentStorage.setSetting(key, null);
 
     if (mistakesTotal === 0) return alert('錯題庫目前完美清空，無需降溫大會考！🎉');
-    const base = [...activeMistakesList].sort(() => 0.5 - Math.random()).slice(0, 50).map(m => ({ ...m.data, _hasCountedMistake: false }));
+    const base = [...activeMistakesList].sort(() => 0.5 - Math.random()).slice(0, 50).map(m => ({ ...window.getWordData(m, vocabList), _hasCountedMistake: false }));
     const shuffled = assignRandomModes(base);
     setSessionType('exam');
     setCurrentSessionWords(shuffled);
@@ -2024,7 +2090,7 @@ window.useSessionLogic = ({
     await window.persistentStorage.setSetting(key, null);
 
     if (historyTotal === 0) return alert('歷史殿堂目前為空，請先完成日常錯題的雙倍消除！');
-    const base = Object.values(historicalMistakes).sort(() => 0.5 - Math.random()).slice(0, 50).map(h => ({ ...h.data, _hasCountedMistake: false, _isHistoryCheck: true, _historyData: h }));
+    const base = Object.values(historicalMistakes).sort(() => 0.5 - Math.random()).slice(0, 50).map(h => ({ ...window.getWordData(h, vocabList), _hasCountedMistake: false, _isHistoryCheck: true, _historyData: h }));
     const shuffled = assignRandomModes(base);
     setSessionType('history');
     setCurrentSessionWords(shuffled);
@@ -2939,8 +3005,8 @@ window.ScanningSession = ({
       const targetPos = (currentWord.pos || '').trim().toLowerCase();
 
       // 彙整抽樣池：優先同詞性 (POS Matching) -> 字庫/錯題/歷史殿堂 -> 全域 rawVocab 字庫
-      const mistakesPool = (activeMistakesList || []).map(m => m.data || m);
-      const historyPool = Object.values(historicalMistakes || {}).map(h => h.data || h);
+      const mistakesPool = (activeMistakesList || []).map(m => window.getWordData(m, vocabList));
+      const historyPool = Object.values(historicalMistakes || {}).map(h => window.getWordData(h, vocabList));
       const rawPool = window.rawVocab || [];
       const combinedPool = [...(vocabList || []), ...mistakesPool, ...historyPool, ...rawPool];
 
@@ -4051,9 +4117,15 @@ window.MistakeModal = ({
   vocabList,
   startEditing,
   handleDeleteWord,
-  setState
+  setState,
+  getWord
 }) => {
   if (!showMistakeModal) return null;
+
+  const resolveWord = (item) => {
+    if (getWord) return getWord(item);
+    return window.getWordData(item, vocabList);
+  };
 
   return (
     <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-[fadeIn_0.2s_ease-in-out]">
@@ -4069,16 +4141,18 @@ window.MistakeModal = ({
           {activeMistakesList.length === 0 ? (
             <div className="text-center py-12 text-slate-500">目前沒有弱點負債，大腦狀態極佳！🎉</div>
           ) : (
-            activeMistakesList.sort((a, b) => b.mistakesCount - a.mistakesCount).map((item) => {
-              const target = Math.min(item.mistakesCount * 2, 6);
-              const current = item.correctCount || 0;
+            (activeMistakesList || []).sort((a, b) => (b?.mistakesCount || 0) - (a?.mistakesCount || 0)).map((item) => {
+              const wordData = resolveWord(item);
+              const target = Math.min((item?.mistakesCount || 1) * 2, 6);
+              const current = item?.correctCount || 0;
               const progress = Math.min((current / target) * 100, 100);
-              const vocabIndex = vocabList.findIndex(w => w.en.trim().toLowerCase() === item.data.en.trim().toLowerCase());
+              const cleanEn = window.normalizeKey(wordData.en);
+              const vocabIndex = (vocabList || []).findIndex(w => window.normalizeKey(w.en) === cleanEn);
               return (
-                <div key={item.data.en} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-slate-700/60 gap-4 group">
+                <div key={wordData.en || Math.random()} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-slate-700/60 gap-4 group">
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <button
-                      onClick={() => speak(item.data.en, true)}
+                      onClick={() => speak(wordData.en, true)}
                       className="p-2 bg-slate-800 hover:bg-slate-700 text-indigo-400 rounded-lg border border-slate-700 shrink-0"
                       title="發音"
                     >
@@ -4086,17 +4160,17 @@ window.MistakeModal = ({
                     </button>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-baseline gap-1.5 sm:gap-2">
-                        <span className="font-bold font-mono text-base text-slate-200 break-all">{item.data.en}</span>
-                        <span className="text-xs text-indigo-400 font-mono whitespace-nowrap">({item.data.pos})</span>
+                        <span className="font-bold font-mono text-base text-slate-200 break-all">{wordData.en}</span>
+                        <span className="text-xs text-indigo-400 font-mono whitespace-nowrap">({wordData.pos})</span>
                       </div>
-                      <span className="text-xs sm:text-sm text-slate-400 break-words block mt-0.5">{item.data.zh}</span>
-                      {item.data.eg && <div className="text-xs text-slate-500 italic mt-1 font-sans break-words">{item.data.eg}</div>}
+                      <span className="text-xs sm:text-sm text-slate-400 break-words block mt-0.5">{wordData.zh}</span>
+                      {wordData.eg && <div className="text-xs text-slate-500 italic mt-1 font-sans break-words">{wordData.eg}</div>}
                     </div>
                   </div>
                   <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
                     <div className="flex flex-col gap-1 w-32 sm:w-36 flex-shrink-0">
                       <div className="flex justify-between text-xs font-mono">
-                        <span className="text-red-400">總失誤: {item.mistakesCount}</span>
+                        <span className="text-red-400">總失誤: {item?.mistakesCount || 0}</span>
                         <span className="text-emerald-400">連對: {current} / {target}</span>
                       </div>
                       <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700">
@@ -4130,7 +4204,8 @@ window.MistakeModal = ({
                               setState(prev => {
                                 const nextState = { ...prev };
                                 nextState.mistakes = { ...prev.mistakes };
-                                delete nextState.mistakes[item.data.en];
+                                const targetKey = cleanEn || wordData.en;
+                                delete nextState.mistakes[targetKey];
                                 return nextState;
                               });
                             }
@@ -4168,9 +4243,16 @@ window.HistoryModal = ({
   setShowHistoryModal,
   historyTotal,
   historicalMistakes,
-  speak
+  speak,
+  vocabList,
+  getWord
 }) => {
   if (!showHistoryModal) return null;
+
+  const resolveWord = (item) => {
+    if (getWord) return getWord(item);
+    return window.getWordData(item, vocabList);
+  };
 
   return (
     <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-[fadeIn_0.2s_ease-in-out]">
@@ -4186,40 +4268,45 @@ window.HistoryModal = ({
           {historyTotal === 0 ? (
             <div className="text-center py-12 text-slate-500">歷史殿堂尚無單字。</div>
           ) : (
-            Object.values(historicalMistakes).sort((a, b) => b.totalFails - a.totalFails).map((item) => {
-              const nextDate = new Date(item.archivedDate + item.interval * 24 * 60 * 60 * 1000);
-              return (
-                <div key={item.data.en} className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:p-4 bg-slate-900/50 rounded-xl border border-slate-700/60 gap-3 sm:gap-4">
-                  <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
-                    <button
-                      onClick={() => speak(item.data.en, true)}
-                      className="p-2 bg-slate-800 hover:bg-slate-700 text-indigo-400 rounded-lg border border-slate-700 shrink-0"
-                      title="發音"
-                    >
-                      <IconVolume />
-                    </button>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-baseline gap-1.5 sm:gap-2">
-                        <span className="font-bold font-mono text-base sm:text-lg text-amber-100 break-all">{item.data.en}</span>
-                        <span className="text-xs text-indigo-400 font-mono whitespace-nowrap">({item.data.pos})</span>
+            Object.values(historicalMistakes || {})
+              .sort((a, b) => (b?.totalFails || 0) - (a?.totalFails || 0))
+              .map((item) => {
+                const wordData = resolveWord(item);
+                const archivedTime = item?.archivedDate || Date.now();
+                const intervalDays = item?.interval || 7;
+                const nextDate = new Date(archivedTime + intervalDays * 24 * 60 * 60 * 1000);
+                return (
+                  <div key={wordData.en || Math.random()} className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:p-4 bg-slate-900/50 rounded-xl border border-slate-700/60 gap-3 sm:gap-4">
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+                      <button
+                        onClick={() => speak(wordData.en, true)}
+                        className="p-2 bg-slate-800 hover:bg-slate-700 text-indigo-400 rounded-lg border border-slate-700 shrink-0"
+                        title="發音"
+                      >
+                        <IconVolume />
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline gap-1.5 sm:gap-2">
+                          <span className="font-bold font-mono text-base sm:text-lg text-amber-100 break-all">{wordData.en}</span>
+                          <span className="text-xs text-indigo-400 font-mono whitespace-nowrap">({wordData.pos})</span>
+                        </div>
+                        <span className="text-xs sm:text-sm text-slate-400 break-words block mt-0.5">{wordData.zh}</span>
+                        {wordData.eg && <div className="text-xs text-slate-500 italic mt-1 font-sans break-words">{wordData.eg}</div>}
                       </div>
-                      <span className="text-xs sm:text-sm text-slate-400 break-words block mt-0.5">{item.data.zh}</span>
-                      {item.data.eg && <div className="text-xs text-slate-500 italic mt-1 font-sans break-words">{item.data.eg}</div>}
+                    </div>
+                    <div className="flex flex-col gap-1 w-full sm:w-48 shrink-0 text-left sm:text-right pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800">
+                      <span className="text-xs font-mono text-slate-500">魔王等級 (失誤): {item?.totalFails || 0} 次</span>
+                      {item?.immune ? (
+                        <span className="text-xs font-bold text-emerald-400">🛡️ 永久免疫</span>
+                      ) : (
+                        <span className="text-xs text-slate-400">
+                          下次突襲: <span className="text-amber-400">{nextDate.toLocaleDateString()}</span>
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <div className="flex flex-col gap-1 w-full sm:w-48 shrink-0 text-left sm:text-right pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800">
-                    <span className="text-xs font-mono text-slate-500">魔王等級 (失誤): {item.totalFails} 次</span>
-                    {item.immune ? (
-                      <span className="text-xs font-bold text-emerald-400">🛡️ 永久免疫</span>
-                    ) : (
-                      <span className="text-xs text-slate-400">
-                        下次突襲: <span className="text-amber-400">{nextDate.toLocaleDateString()}</span>
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })
+                );
+              })
           )}
         </div>
       </div>
@@ -5026,6 +5113,8 @@ function App() {
     setState,
     vocabList,
     setVocabList,
+    vocabMap,
+    getWord,
     wordsPerDay,
     setWordsPerDay,
     ghostsPerDay,
@@ -6302,6 +6391,7 @@ function App() {
         activeMistakesList={activeMistakesList}
         speak={speak}
         vocabList={vocabList}
+        getWord={getWord}
         startEditing={startEditing}
         handleDeleteWord={handleDeleteWord}
         setState={setState}
@@ -6313,6 +6403,8 @@ function App() {
         historyTotal={historyTotal}
         historicalMistakes={historicalMistakes}
         speak={speak}
+        vocabList={vocabList}
+        getWord={getWord}
       />
 
       <DictModal

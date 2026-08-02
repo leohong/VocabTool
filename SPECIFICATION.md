@@ -48,15 +48,17 @@ interface Word {
 ```
 
 ### 2.3 學習狀態與錯題資料結構 (`DBState`)
-採用 **實體數據正規化 (Entity Normalization)** 設計：錯題集 (`mistakes`) 與歷史殿堂 (`historicalMistakes`) 僅以英文 Key (`en`) 為索引，存放特訓與突襲冷卻狀態指標，離隊並剝離重複的 `data: Word` 實體物件，UI 渲染時動態關聯 `vocabList`：
+採用 **全系統實體數據正規化 (Universal Entity Normalization)** 設計：錯題集 (`mistakes`) 與歷史殿堂 (`historicalMistakes`) 僅以經 `normalizeKey()` 清洗的英文 Key (`en`) 為外鍵索引，存放特訓與突襲冷卻狀態指標，離隊並剝離重複的 `data: Word` 實體物件。UI 渲染與演算法執行時，全系統透過 `getWordData(entry, vocabMap)` 以 $O(1)$ 哈希表動態對齊 `vocabList` 字典：
 
 ```typescript
 interface ActiveMistakeEntry {
+  en?: string;                           // 正規化英文單字 Key
   mistakesCount: number;                 // 當日 / 當前循環失誤次數
   correctCount: number;                  // 當前連續拼對次數
 }
 
 interface HistoricalMistakeEntry {
+  en?: string;                           // 正規化英文單字 Key
   mistakesCount: number;                 // 當次特訓失誤次數
   totalFails: number;                    // 魔王等級 / 累計總失誤次數
   archivedDate: number;                  // 歸檔時間戳記 (Epoch MS)
@@ -80,16 +82,28 @@ interface DBState {
 
 ---
 
-## 3. Web 正規化極致輕量備份規格 (Normalized Backup System v3.0)
+## 3. Web 正規化極致輕量備份規格 (Normalized Backup System v3.1)
 
-### 3.1 JSON 備份檔規格結構 (Version 3.0)
-系統匯出之 `極限完整備份_YYYYMMDD_HHMMSS.json` 遵循 v3.0 正規化備份規範：
+### 3.1 JSON 備份檔規格結構 (Version 3.1 Standard)
+系統匯出之 `極限完整備份_YYYYMMDD_HHMMSS.json` 遵循 v3.1 詮釋資料與正規化備份規範：
 
 ```json
 {
-  "version": "3.0",
+  "version": "3.1",
+  "schemaVersion": "3.1.0",
+  "appVersion": "1.9.0",
   "backupType": "normalized_system",
-  "exportDate": "2026-07-29T23:20:00.000Z",
+  "exportDate": "2026-08-02T12:50:00.000Z",
+  "meta": {
+    "generator": "VocabTool-App",
+    "specNotice": "v3.1 Normalized Foreign Key Architecture",
+    "schemaSpec": {
+      "wordEntity": ["en", "pos", "zh", "eg"],
+      "activeMistake": ["mistakesCount", "correctCount"],
+      "historicalMistake": ["mistakesCount", "totalFails", "archivedDate", "step", "interval", "immune"],
+      "dbState": ["currentDay", "completedWordsCount", "learnedWords", "mistakes", "historicalMistakes", "streak"]
+    }
+  },
   "globalSettings": {
     "currentDB": "vocab_2000",
     "dbList": ["vocab_2000", "vocab_7000"],
@@ -109,10 +123,11 @@ interface DBState {
         "currentDay": 23,
         "learnedWords": ["apple", "banana"],
         "mistakes": {
-          "apple": { "mistakesCount": 2, "correctCount": 1 }
+          "apple": { "en": "apple", "mistakesCount": 2, "correctCount": 1 }
         },
         "historicalMistakes": {
           "apple": {
+            "en": "apple",
             "mistakesCount": 1,
             "totalFails": 1,
             "archivedDate": 1784523606417,
@@ -291,30 +306,60 @@ $$\text{連續拼對目標次數} = \text{Min}(\text{該字錯誤次數} \times 
 
 ---
 
-## 9. 程式碼模組化結構與建置程序 (Modular Structure & Build Process)
+## 9. 程式碼模組化結構與分層架構設計 (Modular Architecture & Build Process)
 
-本專案將程式碼劃分為高可讀性、職責分明的模組結構 (`www/js/`)：
+本專案採用三層式（Utils ➔ Hooks ➔ Components）模組化架構設計 (`www/js/`)，貫徹**單一職責原則 (Single Responsibility Principle)** 與**單一真相來源 (Single Source of Truth)** 規範：
 
-### 9.1 目錄與依賴關係
-1.  **`utils/` (無狀態演算法)**：
-    -   `textUtils.js`：文字清洗與遮罩處理 (`cleanApostrophe`, `maskText`, `maskExample`)。
-    -   `dictionaryApi.js`：線上字典 API fetch 與 MyMemory 並行翻譯 (`fetchDictionaryData`)。
-    -   `exportImportUtils.js`：正規化備份打包 (`buildNormalizedBackup`) 與通用防禦型匯入解析 (`parseUniversalBackup`)。
-    -   `persistentStorage.js`：跨平台沙盒檔案與偏好設定持久化介面 (`loadDatabase`, `saveDbState`, `deleteDatabaseFiles`, `removeSetting`)。
-2.  **`hooks/` (React 業務狀態與生命週期)**：
-    -   `useVocabState.js`：單字字典儲存、天數/累計字數切換與自動持久化。
-    -   `useSessionLogic.js`：特訓佇列 (Queue) 管理、閃卡/MCQ/拼字提交、雙倍消除與 SRS 晉級演算法、暫停續做處理。
-    -   `useAudioSession.js`：TTS 引擎控制、盲聽播放器佇列生成與迴圈控制、Wake Lock 鎖屏管理。
-    -   `useOtaUpdate.js`：背景 OTA 熱更新檢測、下載解壓與安全重啟流程。
-3.  **`components/` (視覺元件，純 JSX)**：
-    -   `Icons.js`：全域 SVG 元件。
-    -   `Header.js`、`Dashboard.js`、`Sessions.js`、`AudioPlayer.js`、`Modals.js` (含 `HistoryModal.js`, `MistakeModal.js`)。
-4.  **`app.js` (進入點與視圖分派)**：
-    -   使用上述 Custom Hooks，並依據 `view` 狀態決定分派渲染哪一個元件。
+```
+www/js/
+├── utils/                     # 🛠️ 底層純工具與 API 存取層 (無狀態演算法)
+│   ├── persistentStorage.js   # 💾 唯一數據讀寫 API (Native Filesystem/Preferences + LocalStorage)
+│   ├── sessionUtils.js        # 🧮 唯一演算法與正規化 Key 檢索 API (normalizeKey, getWordData)
+│   ├── textUtils.js           # 📝 字典正則解析與字串處理 API (parseWordLine, formatWordLine)
+│   ├── exportImportUtils.js   # 📦 備份檔 v3.1 JSON/TXT 匯出入 API
+│   ├── dictionaryApi.js       # 🌐 外置線上字典與翻譯 API 客戶端
+│   └── audioUtils.js          # 🔊 TTS 語音發音介面 (Capacitor TTS + Web Speech)
+│
+├── hooks/                     # 🎣 業務邏輯與 React 狀態管理層
+│   ├── useVocabState.js       # 核心持久化 State 庫 (currentDB, DBState, vocabList)
+│   ├── useSessionLogic.js     # 特訓流水線生命週期 (startTodaySession, handleScan, punishWord)
+│   ├── useAudioSession.js     # 聽讀播放器隊列與輪播邏輯
+│   └── useOtaUpdate.js        # Live Updater 原生熱更新 API 檢查
+│
+├── components/                # 🎨 UI 視圖模組層 (完全依賴傳入之 predefined Props)
+│   ├── Icons.js               # 全域 SVG 圖示庫
+│   ├── Header.js / Dashboard.js / AudioPlayer.js / Modals.js / Sessions.js
+│   ├── modals/*.js            # 9 大功能彈窗 (HistoryModal, MistakeModal, EditWordModal 等)
+│   └── sessions/*.js          # 3 大特訓關卡 (ScanningSession, SpellingSession, SummarySession)
+│
+└── app.js                     # 🚀 應用程式進入點 (路由分發、全域快捷鍵與模組組合)
+```
+
+### 9.1 模組職責與 API 單一真相來源
+
+1.  **`utils/` (無狀態底層工具與 API 存取層)**：
+    *   `persistentStorage.js`：**全系統唯一**數據持久化介面。原生平台存取 `@capacitor/preferences` 與 `@capacitor/filesystem`；Web 瀏覽器降級存取 `localStorage`。
+    *   `sessionUtils.js`：**全系統唯一**正規化 Key 檢索與演算法工具 (`normalizeKey`, `getWordData`, `computeDailyWords`, `getLogicalDate`, `calculateIndicator`)。
+    *   `textUtils.js`：字典檔案格式正則解析與字串處理 (`parseWordLine`, `formatWordLine`, `cleanApostrophe`, `maskText`, `maskExample`)。
+    *   `exportImportUtils.js`：正規化備份打包 (`exportNormalizedJson`, `exportTxtDictionary`) 與通用防禦型匯入解析 (`parseUniversalBackup`)。
+    *   `dictionaryApi.js`：線上 Free Dictionary API fetch 與 Google Translate Web API 備用翻譯 (`fetchDictionaryData`)。
+    *   `audioUtils.js`：底層語音發音 API（Capacitor TextToSpeech 原生套件與 Web Speech API 降級封裝）。
+2.  **`hooks/` (React 業務狀態與生命週期層)**：
+    *   `useVocabState.js`：單字字典儲存 (`vocabList`)、天數/累計已解鎖字數 (`completedWordsCount`) 切換與異步自動持久化。
+    *   `useSessionLogic.js`：特訓佇列 (Queue) 管理、閃卡/MCQ/拼字提交、雙倍消除與 SRS 晉級演算法、暫停續做處理。
+    *   `useAudioSession.js`：TTS 引擎控制、盲聽播放器佇列生成與迴圈控制、Wake Lock 鎖屏管理。
+    *   `useOtaUpdate.js`：背景 OTA 熱更新檢測、下載解壓與安全重啟流程。
+3.  **`components/` (視覺元件層，純 JSX 渲染)**：
+    *   `Icons.js`：全域 SVG 元件庫。
+    *   `Header.js`、`Dashboard.js`、`AudioPlayer.js`、`Sessions.js`、`Modals.js`。
+    *   `modals/*.js`（9 個子彈窗）：`HistoryModal`、`MistakeModal`、`EditWordModal`、`ImportOptionsModal`、`DictModal`、`PreviewModal`、`AllPreviewModal`、`LicensesModal`、`AudioSetupModal`。
+    *   `sessions/*.js`（3 個子關卡）：`ScanningSession`、`SpellingSession`、`SummarySession`。
+4.  **`app.js` (應用程式進入點與視圖分派)**：
+    *   組合 Custom Hooks 業務邏輯，並依據 `view` 狀態決定分派渲染頁面。
 
 ### 9.2 預編譯打包機制 (`scripts/build.js`)
-*   **原因**：Android 原生 WebView 因安全性原則不支援 AJAX 本地 JSX/JS 跨檔讀取。
-*   **作法**：透過建置腳本將 25 個模組依賴順序進行合併，以 Babel Standalone 形式直接寫入發布用 `www/index.html` 中的單一 `<script>` 標籤中。
+*   **建置原因**：Android 原生 WebView 因 `file://` 安全性限制，不支援 AJAX 本地跨檔讀取 JSX/JS。
+*   **打包流程**：透過 `node scripts/build.js` 將 28 個前端 JS 模組依正確依賴順序進行預編譯合併，以 Babel Standalone 形式直接寫入發布檔 [www/index.html](file:///d:/MyProjects/VocabTool-App/www/index.html) 之單一 `<script>` 標籤中。
 
 ---
 
