@@ -20,4 +20,3 @@
 
 ## 4. References
 - **Technical Specification & Dev Guide**: [SPECIFICATION.md](file:///d:/MyProjects/VocabTool-App/SPECIFICATION.md)
-- **Token Saver Guide**: [AI_AGENT_TOKEN_SAVER.md](file:///d:/MyProjects/VocabTool-App/.agents/AI_AGENT_TOKEN_SAVER.md)
