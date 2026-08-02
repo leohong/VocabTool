@@ -11,8 +11,7 @@
 4. **Root Cause Protocol**: ALWAYS explain root cause and proposed resolution strategy before modifying code for bugs/failures.
 5. **Documentation Boundary**:
    - `README.md`: End-user operational manual.
-   - `SPECIFICATION.md`: Authoritative technical specification (architecture, data schemas, normalization specs, algorithms).
-   - `DEVELOPMENT_GUIDE.md`: Developer manual, CLI build pipelines, testing & server protocols.
+   - `SPECIFICATION.md`: Authoritative technical specification & developer manual (architecture, schemas, algorithms, CLI pipelines, testing).
 
 ## 3. Token & Context Optimization
 - **Quiet Logs**: Redirect build logs (`> build.log`) or append `-q` (e.g. Gradle). Never flood context with raw logs.
@@ -20,6 +19,5 @@
 - **Filtered Debug Output**: Suppress non-essential logging during test execution or directory searches.
 
 ## 4. References
-- **Technical Manual**: [DEVELOPMENT_GUIDE.md](file:///d:/MyProjects/VocabTool-App/.agents/DEVELOPMENT_GUIDE.md)
-- **Technical Specification**: [SPECIFICATION.md](file:///d:/MyProjects/VocabTool-App/SPECIFICATION.md)
+- **Technical Specification & Dev Guide**: [SPECIFICATION.md](file:///d:/MyProjects/VocabTool-App/SPECIFICATION.md)
 - **Token Saver Guide**: [AI_AGENT_TOKEN_SAVER.md](file:///d:/MyProjects/VocabTool-App/.agents/AI_AGENT_TOKEN_SAVER.md)

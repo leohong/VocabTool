@@ -371,23 +371,42 @@ www/js/
 
 ---
 
-## 11. 開發者編譯與熱更新打包工作流 (Developer Build & Release Pipeline)
+## 11. 開發者建置、測試與 AI 協作工作流 (Developer Build, Test & Workflow Pipelines)
 
-1. **模組預編譯打包 (Babel Bundler)**：
-   ```powershell
-   cmd /c npm run build
-   ```
-2. **Capacitor 資產同步至 Android 工程**：
-   ```powershell
-   cmd /c npx cap sync android
-   ```
-3. **Gradle 靜音編譯 Debug APK**：
-   ```powershell
-   cd android
-   .\gradlew.bat assembleDebug -q
-   ```
-4. **OTA 熱更新 ZIP 打包與發布 (`scripts/zip_www.js`)**：
-   ```powershell
-   node scripts/zip_www.js
-   ```
-   產出 `dist/www.zip`，上傳至 GitHub Release 並更新 `update.json`。
+### 11.1 本地環境變數設定 (PowerShell Setup)
+```powershell
+$env:JAVA_HOME = if (Test-Path "D:\Android\Android Studio\jbr") { "D:\Android\Android Studio\jbr" } else { "$env:ProgramFiles\Android\Android Studio\jbr" }
+if ($env:ANDROID_HOME) { $env:Path += ";$env:ANDROID_HOME\platform-tools" } else { $env:Path += ";$env:LOCALAPPDATA\Android\Sdk\platform-tools" }
+```
+
+### 11.2 標準建置、原生部署與 OTA 熱更新流程
+```powershell
+# 1. 預編譯打包 JavaScript 模組合併至 www/index.html (由 scripts/build.js 執行)
+cmd /c npm run build
+
+# 2. 將 www/ 下之 Web 靜態資源同步至 Android 原生專案
+cmd /c npx cap sync android
+
+# 3. Gradle 靜音編譯 Debug APK
+cd android; .\gradlew.bat assembleDebug -q
+
+# 4. 安裝並啟動至本機 Android 實體機/模擬器
+adb install -r .\app\build\outputs\apk\debug\app-debug.apk
+adb shell am start -n com.vocabtool.app/com.vocabtool.app.MainActivity
+
+# 5. OTA 熱更新 ZIP 打包與發布檔生成 (產出 dist/www.zip)
+node scripts/zip_www.js
+```
+
+### 11.3 自動化測試與雙庫 (VocabTool-App ↔ VocabTool) 同步協定
+* **自動化測試 LocalStorage Mock 規範**：測試腳本寫入 `vocab_currentDB` 時，必須同步寫入 `vocab_dbList: JSON.stringify(['testDB'])`，防止 React Hook 降級載入預設字庫。
+* **動態 Port 綁定**：本地 HTTP 測試伺服器應綁定至 `127.0.0.1:0`（OS 動態分配 Port），防範固定 Port 碰撞。
+* **雙庫同步協定**：同步 `VocabTool` Web 專案時，將編譯完成之 [www/index.html](file:///d:/MyProjects/VocabTool-App/www/index.html) 與 [SPECIFICATION.md](file:///d:/MyProjects/VocabTool-App/SPECIFICATION.md) 覆蓋至 `VocabTool/`；若遠端有更新，執行 `git pull --rebase origin main` 平滑整合後再行推播。
+
+### 11.4 新增前端模組與 AI 協作開發規範
+* **新增模組元件規範**：
+  1. 需在 `www/js/` 劃分之子目錄（`utils/`, `hooks/`, `components/`）底下建立獨立 JS 檔案，並掛載至 `window`（例如 `window.NewComponent = ...`），確保預編譯後全域可讀取。
+  2. 務必將新檔案相對路徑加入 `scripts/build.js` 的 `files` 陣列中，確保排在 `app.js` 之前。
+  3. 執行 `npm run build`（`node scripts/build.js`）重新生成 `www/index.html`。
+* **Remote Git 本地優先鐵律**：未經使用者明確口頭同意，絕對不得執行 `git push`、推送 Tag 或同步遠端 repository。
+
